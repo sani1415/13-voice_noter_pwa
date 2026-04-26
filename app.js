@@ -14,7 +14,19 @@ function getGeminiUrl() { return `https://generativelanguage.googleapis.com/v1be
 ══════════════════════════════════════════════════ */
 const SB_URL = 'https://iqjajofqaimnqvrxgdzc.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxamFqb2ZxYWltbnF2cnhnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDM0NzYsImV4cCI6MjA4Njc3OTQ3Nn0.epEV-GGXUsJe-u4Aumx284qGPrCFZcuXFGN9qmtwwbM';
+
+/**
+ * 'gate' = এই অ্যাপে প্রথম পূর্ণ পর্দা লগইন (ডিফল্ট, নিরাপত্তা)।
+ * 'external' = সেশন না থাকলে AUTH_EXTERNAL_LOGIN_URL এ রিডাইরেক্ট (লগইন UI সেখানে)।
+ */
+const AUTH_UI = 'gate';
+/** AUTH_UI === 'external' হলে — পূর্ণ https URL বা সাপেক্ষ পথ (যেমন 'login.html') */
+const AUTH_EXTERNAL_LOGIN_URL = '';
+
 let sb = null; // Supabase client instance
+/** লগইন ব্যবহারকারীর auth.users id — RLS ও লোকাল ক্যাশ কী */
+let authUserId = null;
+let authSessionEmail = '';
 
 const NOTE_LABEL_KEYS = ['', 'slate', 'blue', 'green', 'amber', 'rose', 'violet'];
 const NOTE_LABEL_BAR = {
@@ -194,6 +206,15 @@ const editorWidthValue        = $('editor-width-value');
 const backupExportBtn         = $('backup-export-btn');
 const backupImportBtn         = $('backup-import-btn');
 const backupImportInput       = $('backup-import-input');
+const screenAuth                = $('screen-auth');
+const mainShell                 = $('main-shell');
+const authEmail                 = $('auth-email');
+const authPassword              = $('auth-password');
+const authSigninBtn             = $('auth-signin-btn');
+const authSignupBtn             = $('auth-signup-btn');
+const authSheetMessage          = $('auth-sheet-message');
+const cloudSyncSummary          = $('cloud-sync-summary');
+const authSignOutBtn            = $('auth-sign-out-btn');
 
 /* ══════════════════════════════════════════════════
    ডেটা লোড / সেভ (Hybrid: localStorage + Supabase)
@@ -233,9 +254,25 @@ function normalizeFolder(raw) {
   };
 }
 
+function cacheNotesKey() {
+  return authUserId ? `vn-notes-${authUserId}` : null;
+}
+
+function cacheFoldersKey() {
+  return authUserId ? `vn-folders-${authUserId}` : null;
+}
+
 function loadLocalCache() {
-  try { notes   = JSON.parse(localStorage.getItem('vn-notes')   || '{}'); } catch { notes   = {}; }
-  try { folders = JSON.parse(localStorage.getItem('vn-folders') || '{}'); } catch { folders = {}; }
+  if (!authUserId) {
+    notes = {};
+    folders = {};
+    return;
+  }
+  const nk = cacheNotesKey();
+  const fk = cacheFoldersKey();
+  try { notes = JSON.parse(localStorage.getItem(nk) || '{}'); } catch { notes = {}; }
+  try { folders = JSON.parse(localStorage.getItem(fk) || '{}'); } catch { folders = {}; }
+
   for (const id of Object.keys(notes)) {
     notes[id] = normalizeNote(notes[id]);
   }
@@ -245,9 +282,13 @@ function loadLocalCache() {
 }
 
 function saveLocalCache() {
+  if (!authUserId) return;
+  const nk = cacheNotesKey();
+  const fk = cacheFoldersKey();
+  if (!nk || !fk) return;
   try {
-    localStorage.setItem('vn-notes',   JSON.stringify(notes));
-    localStorage.setItem('vn-folders', JSON.stringify(folders));
+    localStorage.setItem(nk, JSON.stringify(notes));
+    localStorage.setItem(fk, JSON.stringify(folders));
   } catch { showToast('লোকাল স্টোরেজ পূর্ণ!', 'error'); }
 }
 
@@ -346,19 +387,119 @@ function onBackupImportFile(ev) {
   reader.readAsText(f, 'UTF-8');
 }
 
-/* ── Supabase sync (background) ─────────────────── */
+/* ── Supabase Auth + sync ───────────────────────── */
+let authApplyChain = Promise.resolve();
+
+function queueAuthApply(session) {
+  authApplyChain = authApplyChain
+    .then(() => applyAuthSession(session))
+    .catch(e => console.warn('[Auth]', e));
+  return authApplyChain;
+}
+
+function setAuthSheetMessage(text, isError) {
+  if (!authSheetMessage) return;
+  authSheetMessage.textContent = text || '';
+  authSheetMessage.classList.toggle('auth-sheet-message-error', !!isError);
+}
+
+function updateCloudSyncSummary() {
+  if (!cloudSyncSummary) return;
+  cloudSyncSummary.textContent = authUserId ? (authSessionEmail || 'সংযুক্ত') : '—';
+  if (authSignOutBtn) authSignOutBtn.classList.toggle('hidden', !authUserId);
+}
+
+async function applyAuthSession(session) {
+  const uid = session?.user?.id ?? null;
+  const prevUid = authUserId;
+  authUserId = uid;
+  authSessionEmail = (session && session.user && session.user.email) || '';
+
+  if (!uid) {
+    notes = {};
+    folders = {};
+    currentNoteId = null;
+    currentFolderId = null;
+    pendingFolderId = null;
+    resetLocalEditorAfterImport();
+    if (mainShell) mainShell.classList.add('hidden');
+    if (AUTH_UI === 'external' && String(AUTH_EXTERNAL_LOGIN_URL || '').trim()) {
+      const raw = String(AUTH_EXTERNAL_LOGIN_URL).trim();
+      const url = /^https?:\/\//i.test(raw) ? raw : new URL(raw, window.location.href).href;
+      window.location.href = url;
+      return;
+    }
+    if (screenAuth) screenAuth.classList.remove('hidden');
+    setAuthSheetMessage('', false);
+    updateListHeader();
+    updateListSortButton();
+    renderNotesList();
+    updateCloudSyncSummary();
+    return;
+  }
+
+  if (screenAuth) screenAuth.classList.add('hidden');
+  if (mainShell) mainShell.classList.remove('hidden');
+
+  if (prevUid === uid && uid) {
+    updateCloudSyncSummary();
+    return;
+  }
+
+  loadLocalCache();
+
+  try {
+    await pullFromSupabase();
+  } catch (err) {
+    console.warn('[Supabase] Pull failed:', err.message || err);
+    showToast('ক্লাউড থেকে আনতে ব্যর্থ — লোকাল ক্যাশ দেখাচ্ছি', 'warning');
+  }
+
+  updateListHeader();
+  updateListSortButton();
+  renderNotesList();
+  updateCloudSyncSummary();
+}
+
 async function initSupabase() {
   try {
-    sb = window.supabase.createClient(SB_URL, SB_KEY);
-    await pullFromSupabase(); // প্রথমবার cloud থেকে টেনে আনো
+    if (!window.supabase?.createClient) throw new Error('supabase-js লোড হয়নি');
+    sb = window.supabase.createClient(SB_URL, SB_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce',
+        storage: localStorage,
+      },
+    });
+
+    sb.auth.onAuthStateChange((_event, session) => {
+      void queueAuthApply(session);
+    });
+
+    await new Promise(r => setTimeout(r, 0));
+    const { data: { session } } = await sb.auth.getSession();
+
+    if (!session && AUTH_UI === 'external' && String(AUTH_EXTERNAL_LOGIN_URL || '').trim()) {
+      const raw = String(AUTH_EXTERNAL_LOGIN_URL).trim();
+      const url = /^https?:\/\//i.test(raw) ? raw : new URL(raw, window.location.href).href;
+      window.location.href = url;
+      return;
+    }
+
+    await queueAuthApply(session);
   } catch (err) {
-    console.warn('[Supabase] Init failed, using local cache:', err.message);
-    showToast('Cloud sync বন্ধ — লোকাল ডেটা ব্যবহার হচ্ছে', 'warning');
+    console.warn('[Supabase] Init failed:', err.message || err);
+    showToast('Supabase চালু হয়নি', 'error');
+    if (mainShell) mainShell.classList.add('hidden');
+    if (screenAuth) screenAuth.classList.remove('hidden');
+    setAuthSheetMessage(err.message || 'কনফিগ চেক করুন', true);
   }
 }
 
 async function pullFromSupabase() {
-  if (!sb) return;
+  if (!sb || !authUserId) return;
   const [{ data: nd, error: ne }, { data: fd, error: fe }] = await Promise.all([
     sb.from('vn_notes').select('*').order('updated_at', { ascending: false }),
     sb.from('vn_folders').select('*').order('name'),
@@ -404,10 +545,12 @@ function persistNotes()   { saveLocalCache(); }
 function persistFolders() { saveLocalCache(); }
 
 function sbUpsertNote(id) {
-  if (!sb || !notes[id]) return;
+  if (!sb || !authUserId || !notes[id]) return;
   const n = notes[id];
   sb.from('vn_notes').upsert({
-    id, title: n.title, content: n.content,
+    id,
+    user_id: authUserId,
+    title: n.title, content: n.content,
     folder_id: n.folderId || null,
     created_at: n.created, updated_at: n.updated,
     title_is_custom: n.titleCustom === true,
@@ -420,17 +563,19 @@ function sbUpsertNote(id) {
 }
 
 function sbDeleteNote(id) {
-  if (!sb) return;
+  if (!sb || !authUserId) return;
   sb.from('vn_notes').delete().eq('id', id).then(({ error }) => {
     if (error) console.warn('[Supabase] delete note:', error.message);
   });
 }
 
 function sbUpsertFolder(id) {
-  if (!sb || !folders[id]) return;
+  if (!sb || !authUserId || !folders[id]) return;
   const f = folders[id];
   sb.from('vn_folders').upsert({
-    id, name: f.name, created_at: f.created,
+    id,
+    user_id: authUserId,
+    name: f.name, created_at: f.created,
     label_color: f.labelColor || '',
   }, { onConflict: 'id' }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert folder:', error.message);
@@ -438,7 +583,7 @@ function sbUpsertFolder(id) {
 }
 
 function sbDeleteFolder(id) {
-  if (!sb) return;
+  if (!sb || !authUserId) return;
   sb.from('vn_folders').delete().eq('id', id).then(({ error }) => {
     if (error) console.warn('[Supabase] delete folder:', error.message);
   });
@@ -1790,6 +1935,83 @@ on(backupExportBtn, 'click', exportVoiceNotesBackup);
 on(backupImportBtn, 'click', () => { if (backupImportInput) backupImportInput.click(); });
 on(backupImportInput, 'change', onBackupImportFile);
 
+on(authSignOutBtn, 'click', async () => {
+  if (!sb) return;
+  const { error } = await sb.auth.signOut();
+  if (error) showToast(error.message, 'error');
+  else showToast('সাইন আউট হয়েছে', 'info');
+});
+
+function authRedirectBase() {
+  const path = window.location.pathname || '/';
+  const base = path.endsWith('/') ? path : `${path}/`;
+  return `${window.location.origin}${base}`;
+}
+
+on(authSigninBtn, 'click', async () => {
+  if (!sb) {
+    setAuthSheetMessage('ক্লায়েন্ট লোড হয়নি — পেজ রিফ্রেশ করুন', true);
+    return;
+  }
+  const email = (authEmail && authEmail.value ? authEmail.value : '').trim();
+  const password = authPassword && authPassword.value ? authPassword.value : '';
+  if (!email) {
+    setAuthSheetMessage('ইমেইল লিখুন', true);
+    return;
+  }
+  if (!password) {
+    setAuthSheetMessage('পাসওয়ার্ড লিখুন', true);
+    return;
+  }
+  if (authSigninBtn) authSigninBtn.disabled = true;
+  setAuthSheetMessage('সাইন ইন…', false);
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (authSigninBtn) authSigninBtn.disabled = false;
+  if (error) {
+    setAuthSheetMessage(error.message, true);
+    return;
+  }
+  setAuthSheetMessage('', false);
+  showToast('সাইন ইন হয়েছে', 'success');
+});
+
+on(authSignupBtn, 'click', async () => {
+  if (!sb) {
+    setAuthSheetMessage('ক্লায়েন্ট লোড হয়নি — পেজ রিফ্রেশ করুন', true);
+    return;
+  }
+  const email = (authEmail && authEmail.value ? authEmail.value : '').trim();
+  const password = authPassword && authPassword.value ? authPassword.value : '';
+  if (!email) {
+    setAuthSheetMessage('ইমেইল লিখুন', true);
+    return;
+  }
+  if (!password || password.length < 6) {
+    setAuthSheetMessage('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর', true);
+    return;
+  }
+  if (authSignupBtn) authSignupBtn.disabled = true;
+  setAuthSheetMessage('অ্যাকাউন্ট তৈরি…', false);
+  const { error } = await sb.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: authRedirectBase() },
+  });
+  if (authSignupBtn) authSignupBtn.disabled = false;
+  if (error) {
+    setAuthSheetMessage(error.message, true);
+    return;
+  }
+  setAuthSheetMessage('চেক করুন — ইমেইল নিশ্চিতকরণ চালু থাকলে লিংকে ক্লিক করুন।', false);
+  showToast('সাইন আপ অনুরোধ পাঠানো হয়েছে', 'info');
+});
+
+on(authPassword, 'keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  if (authSigninBtn) authSigninBtn.click();
+});
+
 on(toggleEyeBtn, 'click', () => {
   if (!apiKeyInput) return;
   apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
@@ -1900,24 +2122,26 @@ window.addEventListener('popstate', () => {
 /* ══════════════════════════════════════════════════
    শুরু
 ══════════════════════════════════════════════════ */
-// প্রথমে localStorage থেকে instant load → UI দেখাও
 loadPrefs();
 applyPrefs();
-loadLocalCache();
 try {
   const s = localStorage.getItem('vn-list-sort');
   if (s) listSort = s;
 } catch { /* */ }
-updateListHeader();
-updateListSortButton();
+notes = {};
+folders = {};
 syncSettingsControls();
 initSettingsTabs();
 buildLabelSwatches();
+updateListHeader();
+updateListSortButton();
 renderNotesList();
+updateCloudSyncSummary();
 history.replaceState({ screen: 'list' }, '');
 
-// তারপর Supabase থেকে sync (background)
-initSupabase();
+void (async () => {
+  await initSupabase();
+})();
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));

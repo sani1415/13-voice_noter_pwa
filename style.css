@@ -199,6 +199,101 @@ body {
   overflow: hidden;
 }
 
+#main-shell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+#main-shell.hidden {
+  display: none !important;
+}
+
+.auth-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px calc(var(--safe-right) + 20px) calc(var(--safe-bottom) + 24px) calc(var(--safe-left) + 20px);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.auth-screen.hidden {
+  display: none !important;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.auth-logo {
+  margin-bottom: 10px;
+}
+
+.auth-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.auth-lead {
+  font-size: 0.88rem;
+  color: var(--hint);
+  line-height: 1.45;
+  margin-bottom: 18px;
+}
+
+.auth-email-wrap {
+  margin-bottom: 0;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 16px;
+}
+
+.auth-secondary-btn {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.auth-sheet-message {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--hint);
+  min-height: 1.25em;
+}
+
+.auth-sheet-message.auth-sheet-message-error {
+  color: #b91c1c;
+}
+
+html[data-theme="dark"] .auth-sheet-message.auth-sheet-message-error {
+  color: #fca5a5;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] .auth-sheet-message.auth-sheet-message-error {
+    color: #fca5a5;
+  }
+}
+
+.modal-footer-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.modal-footer-stack .modal-btn-primary,
+.modal-footer-stack .modal-btn-secondary {
+  width: 100%;
+}
+
 /* ═══ স্ক্রিন সিস্টেম ═══ */
 .screen {
   position: absolute;

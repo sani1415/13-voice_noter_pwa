@@ -21,6 +21,33 @@
 <body>
 <div id="app">
 
+  <!-- লগইন না হলে নোট লিস্ট দেখাবে না (নিরাপত্তা) -->
+  <div id="screen-auth" class="auth-screen" role="dialog" aria-modal="true" aria-labelledby="auth-gate-title">
+    <div class="auth-card">
+      <div class="auth-logo" aria-hidden="true">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="4" width="8" height="12" rx="4" fill="var(--accent)"/>
+          <path d="M4 12a8 8 0 0 0 16 0" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" fill="none"/>
+        </svg>
+      </div>
+      <h1 id="auth-gate-title" class="auth-title">Voice Notes</h1>
+      <p class="auth-lead">ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন। ক্লাউড সিঙ্ক শুধু আপনার অ্যাকাউন্টে।</p>
+      <label class="modal-label" for="auth-email">ইমেইল</label>
+      <div class="key-input-wrap auth-email-wrap">
+        <input type="email" id="auth-email" class="key-input" inputmode="email" autocomplete="username" placeholder="you@example.com" />
+      </div>
+      <label class="modal-label" for="auth-password" style="margin-top:12px;display:block">পাসওয়ার্ড</label>
+      <div class="key-input-wrap">
+        <input type="password" id="auth-password" class="key-input" autocomplete="current-password" placeholder="••••••••" />
+      </div>
+      <p id="auth-sheet-message" class="auth-sheet-message" role="status"></p>
+      <button type="button" class="modal-btn-primary auth-submit" id="auth-signin-btn">সাইন ইন</button>
+      <button type="button" class="modal-btn-secondary auth-secondary-btn" id="auth-signup-btn">নতুন অ্যাকাউন্ট (সাইন আপ)</button>
+    </div>
+  </div>
+
+  <div id="main-shell" class="hidden">
+
   <!-- ══════════════════════════════════════
        স্ক্রিন ১: নোট লিস্ট
   ══════════════════════════════════════ -->
@@ -386,11 +413,21 @@
               <div class="settings-row-main">
                 <span class="settings-status-dot"></span>
                 <div>
-                  <p class="settings-row-title">Cloud Sync</p>
-                  <p class="settings-row-sub">Supabase connected</p>
+                  <p class="settings-row-title">ক্লাউড</p>
+                  <p class="settings-row-sub" id="cloud-sync-summary">সংযুক্ত</p>
                 </div>
               </div>
             </div>
+            <button type="button" class="settings-row settings-row-button hidden" id="auth-sign-out-btn">
+              <div class="settings-row-main">
+                <span class="settings-icon">⎋</span>
+                <div>
+                  <p class="settings-row-title">সাইন আউট</p>
+                  <p class="settings-row-sub">এই ডিভাইসে সেশন শেষ</p>
+                </div>
+              </div>
+              <span class="settings-chevron">›</span>
+            </button>
             <button type="button" class="settings-row settings-row-button" id="backup-export-btn">
               <div class="settings-row-main">
                 <span class="settings-icon">↓</span>
@@ -453,7 +490,6 @@
       </div>
     </div>
   </div>
-
 
   <!-- ══════════════════════════════════════
        প্রসেসিং ওভারলে
@@ -656,6 +692,8 @@
       <p id="move-sheet-current" class="move-current-hint" role="status"></p>
       <div id="move-folder-list" class="move-folder-list"></div>
     </div>
+  </div>
+
   </div>
 
 </div>
