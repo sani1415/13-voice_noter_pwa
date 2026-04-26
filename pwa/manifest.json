@@ -1,0 +1,19 @@
+{
+  "name": "Voice Notes",
+  "short_name": "VoiceNotes",
+  "description": "বাংলা ভয়েস নোট — AI ট্রান্সক্রিপশন",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1a2744",
+  "theme_color": "#1a2744",
+  "orientation": "portrait-primary",
+  "lang": "bn",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
