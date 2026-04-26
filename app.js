@@ -15,18 +15,13 @@ function getGeminiUrl() { return `https://generativelanguage.googleapis.com/v1be
 const SB_URL = 'https://iqjajofqaimnqvrxgdzc.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxamFqb2ZxYWltbnF2cnhnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDM0NzYsImV4cCI6MjA4Njc3OTQ3Nn0.epEV-GGXUsJe-u4Aumx284qGPrCFZcuXFGN9qmtwwbM';
 
-/**
- * 'gate' = এই অ্যাপে প্রথম পূর্ণ পর্দা লগইন (ডিফল্ট, নিরাপত্তা)।
- * 'external' = সেশন না থাকলে AUTH_EXTERNAL_LOGIN_URL এ রিডাইরেক্ট (লগইন UI সেখানে)।
- */
-const AUTH_UI = 'gate';
-/** AUTH_UI === 'external' হলে — পূর্ণ https URL বা সাপেক্ষ পথ (যেমন 'login.html') */
-const AUTH_EXTERNAL_LOGIN_URL = '';
-
-let sb = null; // Supabase client instance
-/** লগইন ব্যবহারকারীর auth.users id — RLS ও লোকাল ক্যাশ কী */
-let authUserId = null;
-let authSessionEmail = '';
+let sb = null; // Supabase client (কাস্টম PIN ইউজার + RPC; Supabase Auth নয়)
+/** vn_app_users.id — লোকাল ক্যাশ কী */
+let appUserId = null;
+let appUsername = '';
+let appIsAdmin = false;
+let appMustChangePin = false;
+let sessionToken = null;
 
 const NOTE_LABEL_KEYS = ['', 'slate', 'blue', 'green', 'amber', 'rose', 'violet'];
 const NOTE_LABEL_BAR = {
@@ -69,6 +64,9 @@ let appPrefs = {
   lineHeight: 'normal',
   editorWidth: 'full',
 };
+
+let confirmResolver = null;
+let pinResetResolver = null;
 
 let micStream      = null;
 let mediaRecorder  = null;
@@ -208,13 +206,40 @@ const backupImportBtn         = $('backup-import-btn');
 const backupImportInput       = $('backup-import-input');
 const screenAuth                = $('screen-auth');
 const mainShell                 = $('main-shell');
-const authEmail                 = $('auth-email');
+const authUsername              = $('auth-username');
 const authPassword              = $('auth-password');
+const authPinToggle               = $('auth-pin-toggle');
 const authSigninBtn             = $('auth-signin-btn');
-const authSignupBtn             = $('auth-signup-btn');
 const authSheetMessage          = $('auth-sheet-message');
+const accountCurrentPin         = $('account-current-pin');
+const accountNewPin             = $('account-new-pin');
+const accountConfirmPin         = $('account-confirm-pin');
+const accountChangePinBtn       = $('account-change-pin-btn');
+const accountPinMessage         = $('account-pin-message');
+const accountPinRequiredAlert   = $('account-pin-required-alert');
+const adminUserCreateBlock      = $('admin-user-create-block');
+const adminNewUsername          = $('admin-new-username');
+const adminNewPin               = $('admin-new-pin');
+const adminNewPinToggle         = $('admin-new-pin-toggle');
+const adminCreateUserBtn        = $('admin-create-user-btn');
+const adminCreateMessage        = $('admin-create-message');
+const adminRefreshUsersBtn      = $('admin-refresh-users-btn');
+const adminUsersList            = $('admin-users-list');
 const cloudSyncSummary          = $('cloud-sync-summary');
 const authSignOutBtn            = $('auth-sign-out-btn');
+const appConfirmDialog          = $('app-confirm-dialog');
+const appConfirmIcon            = $('app-confirm-icon');
+const appConfirmTitle           = $('app-confirm-title');
+const appConfirmMessage         = $('app-confirm-message');
+const appConfirmCancel          = $('app-confirm-cancel');
+const appConfirmOk              = $('app-confirm-ok');
+const pinResetDialog            = $('pin-reset-dialog');
+const pinResetTitle             = $('pin-reset-title');
+const pinResetMessage           = $('pin-reset-message');
+const pinResetInput             = $('pin-reset-input');
+const pinResetError             = $('pin-reset-error');
+const pinResetCancel            = $('pin-reset-cancel');
+const pinResetOk                = $('pin-reset-ok');
 
 /* ══════════════════════════════════════════════════
    ডেটা লোড / সেভ (Hybrid: localStorage + Supabase)
@@ -255,15 +280,15 @@ function normalizeFolder(raw) {
 }
 
 function cacheNotesKey() {
-  return authUserId ? `vn-notes-${authUserId}` : null;
+  return appUserId ? `vn-notes-${appUserId}` : null;
 }
 
 function cacheFoldersKey() {
-  return authUserId ? `vn-folders-${authUserId}` : null;
+  return appUserId ? `vn-folders-${appUserId}` : null;
 }
 
 function loadLocalCache() {
-  if (!authUserId) {
+  if (!appUserId) {
     notes = {};
     folders = {};
     return;
@@ -282,7 +307,7 @@ function loadLocalCache() {
 }
 
 function saveLocalCache() {
-  if (!authUserId) return;
+  if (!appUserId) return;
   const nk = cacheNotesKey();
   const fk = cacheFoldersKey();
   if (!nk || !fk) return;
@@ -349,14 +374,20 @@ function onBackupImportFile(ev) {
   input.value = '';
   if (!f) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const data = JSON.parse(reader.result);
       if (!validateBackupNotes(data.notes) || !validateBackupFolders(data.folders)) {
         showToast('ফাইলটা বৈধ ব্যাকআপ নয়', 'error');
         return;
       }
-      if (!confirm('বর্তমান সব নোট ও ফোল্ডার মুছে এই ফাইল দিয়ে পূরণ হবে। চালিয়ে যাবেন?')) return;
+      const ok = await appConfirm({
+        title: 'ব্যাকআপ পুনরুদ্ধার?',
+        message: 'বর্তমান সব নোট ও ফোল্ডার মুছে এই ফাইল দিয়ে পূরণ হবে।',
+        okText: 'পুনরুদ্ধার করুন',
+        icon: '↑',
+      });
+      if (!ok) return;
       notes = JSON.parse(JSON.stringify(data.notes));
       folders = JSON.parse(JSON.stringify(data.folders));
       for (const nid of Object.keys(notes)) {
@@ -387,74 +418,234 @@ function onBackupImportFile(ev) {
   reader.readAsText(f, 'UTF-8');
 }
 
-/* ── Supabase Auth + sync ───────────────────────── */
-let authApplyChain = Promise.resolve();
-
-function queueAuthApply(session) {
-  authApplyChain = authApplyChain
-    .then(() => applyAuthSession(session))
-    .catch(e => console.warn('[Auth]', e));
-  return authApplyChain;
-}
-
+/* ── Supabase: কাস্টম PIN ইউজার + RPC (vn_app_users) ── */
 function setAuthSheetMessage(text, isError) {
   if (!authSheetMessage) return;
   authSheetMessage.textContent = text || '';
   authSheetMessage.classList.toggle('auth-sheet-message-error', !!isError);
 }
 
-function updateCloudSyncSummary() {
-  if (!cloudSyncSummary) return;
-  cloudSyncSummary.textContent = authUserId ? (authSessionEmail || 'সংযুক্ত') : '—';
-  if (authSignOutBtn) authSignOutBtn.classList.toggle('hidden', !authUserId);
+function setAdminCreateMessage(text, isError) {
+  if (!adminCreateMessage) return;
+  adminCreateMessage.textContent = text || '';
+  adminCreateMessage.classList.toggle('auth-sheet-message-error', !!isError);
 }
 
-async function applyAuthSession(session) {
-  const uid = session?.user?.id ?? null;
-  const prevUid = authUserId;
-  authUserId = uid;
-  authSessionEmail = (session && session.user && session.user.email) || '';
+function setAccountPinMessage(text, isError) {
+  if (!accountPinMessage) return;
+  accountPinMessage.textContent = text || '';
+  accountPinMessage.classList.toggle('auth-sheet-message-error', !!isError);
+}
 
-  if (!uid) {
-    notes = {};
-    folders = {};
-    currentNoteId = null;
-    currentFolderId = null;
-    pendingFolderId = null;
-    resetLocalEditorAfterImport();
-    if (mainShell) mainShell.classList.add('hidden');
-    if (AUTH_UI === 'external' && String(AUTH_EXTERNAL_LOGIN_URL || '').trim()) {
-      const raw = String(AUTH_EXTERNAL_LOGIN_URL).trim();
-      const url = /^https?:\/\//i.test(raw) ? raw : new URL(raw, window.location.href).href;
-      window.location.href = url;
-      return;
-    }
-    if (screenAuth) screenAuth.classList.remove('hidden');
-    setAuthSheetMessage('', false);
-    updateListHeader();
-    updateListSortButton();
-    renderNotesList();
-    updateCloudSyncSummary();
-    return;
+function userRpcMessage(code) {
+  const map = {
+    invalid_session: 'সেশন শেষ — আবার লগইন করুন',
+    not_admin: 'শুধু অ্যাডমিন এই কাজ করতে পারবেন',
+    pin_too_short: 'পিন কমপক্ষে ৪ অক্ষর দিন',
+    invalid_current_pin: 'বর্তমান পিন ঠিক নয়',
+    duplicate_username: 'এই ইউজারনেম আগে থেকেই আছে',
+    user_not_found: 'ইউজার পাওয়া যায়নি',
+    user_disabled: 'এই ইউজার বন্ধ করা আছে',
+    cannot_disable_self: 'নিজের অ্যাকাউন্ট বন্ধ করা যাবে না',
+  };
+  return map[code] || code || 'কাজটি সম্পন্ন হয়নি';
+}
+
+function formatUserDate(iso) {
+  if (!iso) return 'কখনো নয়';
+  try {
+    return new Intl.DateTimeFormat('bn-BD', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    }).format(new Date(iso));
+  } catch {
+    return iso;
   }
+}
 
+function persistAppSessionFromLogin(data) {
+  if (!data || data.ok !== true) return;
+  sessionToken = data.session_token || null;
+  appUserId = data.user_id || null;
+  appUsername = data.username || '';
+  appIsAdmin = !!data.is_admin;
+  appMustChangePin = !!data.must_change_pin;
+  try {
+    if (sessionToken) localStorage.setItem('vn-app-session-token', sessionToken);
+    if (appUserId) localStorage.setItem('vn-app-user-id', appUserId);
+    localStorage.setItem('vn-app-username', appUsername);
+    localStorage.setItem('vn-app-is-admin', appIsAdmin ? '1' : '0');
+    localStorage.setItem('vn-app-must-change-pin', appMustChangePin ? '1' : '0');
+  } catch { /* */ }
+}
+
+function clearAppSession() {
+  sessionToken = null;
+  appUserId = null;
+  appUsername = '';
+  appIsAdmin = false;
+  appMustChangePin = false;
+  try {
+    localStorage.removeItem('vn-app-session-token');
+    localStorage.removeItem('vn-app-user-id');
+    localStorage.removeItem('vn-app-username');
+    localStorage.removeItem('vn-app-is-admin');
+    localStorage.removeItem('vn-app-must-change-pin');
+  } catch { /* */ }
+}
+
+function showAuthGate() {
+  if (mainShell) mainShell.classList.add('hidden');
+  if (screenAuth) screenAuth.classList.remove('hidden');
+}
+
+function hideAuthGate() {
   if (screenAuth) screenAuth.classList.add('hidden');
   if (mainShell) mainShell.classList.remove('hidden');
+}
 
-  if (prevUid === uid && uid) {
-    updateCloudSyncSummary();
+function updateCloudSyncSummary() {
+  if (!cloudSyncSummary) return;
+  cloudSyncSummary.textContent = appUserId ? (appUsername || 'সংযুক্ত') : '—';
+  if (authSignOutBtn) authSignOutBtn.classList.toggle('hidden', !appUserId);
+  if (adminUserCreateBlock) adminUserCreateBlock.classList.toggle('hidden', !appIsAdmin);
+  if (accountPinRequiredAlert) accountPinRequiredAlert.classList.toggle('hidden', !appMustChangePin);
+}
+
+function renderAdminUsers(users) {
+  if (!adminUsersList) return;
+  const list = Array.isArray(users) ? users : [];
+  if (!appIsAdmin) {
+    adminUsersList.innerHTML = '';
+    return;
+  }
+  if (!list.length) {
+    adminUsersList.innerHTML = '<p class="settings-user-empty">কোনো ইউজার নেই</p>';
     return;
   }
 
-  loadLocalCache();
+  adminUsersList.innerHTML = '';
+  for (const user of list) {
+    const row = document.createElement('div');
+    row.className = 'settings-user-card' + (user.is_active === false ? ' is-disabled' : '');
+    row.innerHTML = `
+      <div class="settings-user-card-main">
+        <div class="settings-user-card-title">
+          <span>${esc(user.username || 'নামহীন')}</span>
+          ${user.is_admin ? '<span class="settings-user-badge">Admin</span>' : ''}
+          ${user.is_active === false ? '<span class="settings-user-badge settings-user-badge-muted">বন্ধ</span>' : ''}
+      ${user.must_change_pin ? '<span class="settings-user-badge settings-user-badge-warn">পিন বদলাবে</span>' : ''}
+        </div>
+        <p class="settings-user-card-sub">শেষ লগইন: ${esc(formatUserDate(user.last_login_at))}</p>
+      </div>
+      <div class="settings-user-actions">
+        <button type="button" class="settings-mini-btn" data-user-action="reset-pin">পিন রিসেট</button>
+        <button type="button" class="settings-mini-btn ${user.is_active === false ? '' : 'settings-mini-btn-danger'}" data-user-action="toggle-active">
+          ${user.is_active === false ? 'চালু' : 'বন্ধ'}
+        </button>
+      </div>`;
 
+    row.querySelector('[data-user-action="reset-pin"]')?.addEventListener('click', () => resetUserPin(user));
+    row.querySelector('[data-user-action="toggle-active"]')?.addEventListener('click', () => toggleUserActive(user));
+    adminUsersList.appendChild(row);
+  }
+}
+
+async function loadAdminUsers() {
+  if (!sb || !sessionToken || !appIsAdmin || !adminUsersList) return;
+  adminUsersList.innerHTML = '<p class="settings-user-empty">ইউজার লোড হচ্ছে…</p>';
+  const { data, error } = await sb.rpc('vn_admin_list_users', { p_session_token: sessionToken });
+  if (error || !data || data.ok !== true) {
+    adminUsersList.innerHTML = `<p class="settings-user-empty settings-user-empty-error">${esc(error?.message || userRpcMessage(data?.error))}</p>`;
+    return;
+  }
+  renderAdminUsers(data.users);
+}
+
+async function resetUserPin(user) {
+  if (!sb || !sessionToken || !user?.id) return;
+  const newPin = await requestPinResetValue(user.username);
+  if (newPin == null) return;
+  if (newPin.length < 4) {
+    showToast('পিন কমপক্ষে ৪ অক্ষর দিন', 'warning');
+    return;
+  }
+  const { data, error } = await sb.rpc('vn_admin_reset_user_pin', {
+    p_session_token: sessionToken,
+    p_user_id: user.id,
+    p_new_pin: newPin,
+  });
+  if (error || !data || data.ok !== true) {
+    showToast(error?.message || userRpcMessage(data?.error), 'error');
+    return;
+  }
+  showToast('পিন রিসেট হয়েছে — ইউজারকে লগইনে নতুন পিন বদলাতে হবে', 'success');
+  await loadAdminUsers();
+}
+
+async function toggleUserActive(user) {
+  if (!sb || !sessionToken || !user?.id) return;
+  const nextActive = user.is_active === false;
+  const action = nextActive ? 'চালু' : 'বন্ধ';
+  const ok = await appConfirm({
+    title: `ইউজার ${action} করবেন?`,
+    message: `"${user.username}" ইউজারটি ${action} করা হবে।`,
+    okText: action,
+    tone: nextActive ? 'normal' : 'danger',
+    icon: nextActive ? '✓' : '!',
+  });
+  if (!ok) return;
+  const { data, error } = await sb.rpc('vn_admin_set_user_active', {
+    p_session_token: sessionToken,
+    p_user_id: user.id,
+    p_is_active: nextActive,
+  });
+  if (error || !data || data.ok !== true) {
+    showToast(error?.message || userRpcMessage(data?.error), 'error');
+    return;
+  }
+  showToast(`ইউজার ${action} হয়েছে`, 'success');
+  await loadAdminUsers();
+}
+
+async function enterAppAfterSession() {
+  hideAuthGate();
+  loadLocalCache();
   try {
     await pullFromSupabase();
   } catch (err) {
     console.warn('[Supabase] Pull failed:', err.message || err);
     showToast('ক্লাউড থেকে আনতে ব্যর্থ — লোকাল ক্যাশ দেখাচ্ছি', 'warning');
   }
+  updateListHeader();
+  updateListSortButton();
+  renderNotesList();
+  updateCloudSyncSummary();
+  if (appIsAdmin) loadAdminUsers();
+  if (appMustChangePin) guidePinChange();
+}
 
+function guidePinChange() {
+  setAccountPinMessage('প্রথমে নতুন পিন সেট করুন। বর্তমান পিন লিখে নতুন পিন দিন।', true);
+  openSettingsPage();
+  activateSettingsTab('user');
+  setTimeout(() => accountCurrentPin?.focus(), 260);
+}
+
+async function exitAppSession() {
+  notes = {};
+  folders = {};
+  currentNoteId = null;
+  currentFolderId = null;
+  pendingFolderId = null;
+  resetLocalEditorAfterImport();
+  if (sb && sessionToken) {
+    try {
+      await sb.rpc('vn_pin_logout', { p_session_token: sessionToken });
+    } catch { /* */ }
+  }
+  clearAppSession();
+  showAuthGate();
   updateListHeader();
   updateListSortButton();
   renderNotesList();
@@ -464,51 +655,52 @@ async function applyAuthSession(session) {
 async function initSupabase() {
   try {
     if (!window.supabase?.createClient) throw new Error('supabase-js লোড হয়নি');
-    sb = window.supabase.createClient(SB_URL, SB_KEY, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce',
-        storage: localStorage,
-      },
-    });
-
-    sb.auth.onAuthStateChange((_event, session) => {
-      void queueAuthApply(session);
-    });
-
-    await new Promise(r => setTimeout(r, 0));
-    const { data: { session } } = await sb.auth.getSession();
-
-    if (!session && AUTH_UI === 'external' && String(AUTH_EXTERNAL_LOGIN_URL || '').trim()) {
-      const raw = String(AUTH_EXTERNAL_LOGIN_URL).trim();
-      const url = /^https?:\/\//i.test(raw) ? raw : new URL(raw, window.location.href).href;
-      window.location.href = url;
+    sb = window.supabase.createClient(SB_URL, SB_KEY);
+    const tok = localStorage.getItem('vn-app-session-token');
+    if (tok) {
+      sessionToken = tok;
+      const { data, error } = await sb.rpc('vn_pin_resolve_session', { p_session_token: tok });
+      if (error || !data || data.ok !== true) {
+        clearAppSession();
+        showAuthGate();
+        setAuthSheetMessage('সেশন শেষ — আবার লগইন করুন', false);
+        return;
+      }
+      appUserId = data.user_id;
+      appUsername = data.username || '';
+      appIsAdmin = !!data.is_admin;
+      appMustChangePin = !!data.must_change_pin;
+      try {
+        localStorage.setItem('vn-app-user-id', appUserId || '');
+        localStorage.setItem('vn-app-username', appUsername);
+        localStorage.setItem('vn-app-is-admin', appIsAdmin ? '1' : '0');
+        localStorage.setItem('vn-app-must-change-pin', appMustChangePin ? '1' : '0');
+      } catch { /* */ }
+      await enterAppAfterSession();
       return;
     }
-
-    await queueAuthApply(session);
+    showAuthGate();
   } catch (err) {
     console.warn('[Supabase] Init failed:', err.message || err);
     showToast('Supabase চালু হয়নি', 'error');
-    if (mainShell) mainShell.classList.add('hidden');
-    if (screenAuth) screenAuth.classList.remove('hidden');
+    showAuthGate();
     setAuthSheetMessage(err.message || 'কনফিগ চেক করুন', true);
   }
 }
 
 async function pullFromSupabase() {
-  if (!sb || !authUserId) return;
-  const [{ data: nd, error: ne }, { data: fd, error: fe }] = await Promise.all([
-    sb.from('vn_notes').select('*').order('updated_at', { ascending: false }),
-    sb.from('vn_folders').select('*').order('name'),
-  ]);
-  if (ne || fe) throw new Error((ne || fe).message);
+  if (!sb || !sessionToken || !appUserId) return;
+  const { data, error } = await sb.rpc('vn_pull_notes_folders', {
+    p_session_token: sessionToken,
+  });
+  if (error) throw new Error(error.message);
+  if (!data || data.ok !== true) throw new Error(data?.error || 'pull_failed');
 
-  // Cloud data → in-memory
+  const nd = Array.isArray(data.notes) ? data.notes : [];
+  const fd = Array.isArray(data.folders) ? data.folders : [];
+
   notes = {};
-  for (const n of nd || []) {
+  for (const n of nd) {
     let tags = [];
     if (Array.isArray(n.tags)) tags = n.tags.map(t => String(t).trim()).filter(Boolean);
     else if (n.tags && typeof n.tags === 'string') {
@@ -526,7 +718,7 @@ async function pullFromSupabase() {
     });
   }
   folders = {};
-  for (const f of fd || []) {
+  for (const f of fd) {
     folders[f.id] = normalizeFolder({
       name: f.name,
       created: f.created_at,
@@ -534,7 +726,7 @@ async function pullFromSupabase() {
     });
   }
 
-  saveLocalCache(); // localStorage-ও আপডেট করো
+  saveLocalCache();
   updateListHeader();
   renderNotesList();
   console.log('[Supabase] Pulled:', Object.keys(notes).length, 'notes,', Object.keys(folders).length, 'folders');
@@ -544,47 +736,64 @@ async function pullFromSupabase() {
 function persistNotes()   { saveLocalCache(); }
 function persistFolders() { saveLocalCache(); }
 
-function sbUpsertNote(id) {
-  if (!sb || !authUserId || !notes[id]) return;
+function notePayloadForRpc(id) {
   const n = notes[id];
-  sb.from('vn_notes').upsert({
+  return {
     id,
-    user_id: authUserId,
-    title: n.title, content: n.content,
+    title: n.title,
+    content: n.content,
     folder_id: n.folderId || null,
-    created_at: n.created, updated_at: n.updated,
+    created_at: n.created,
+    updated_at: n.updated,
     title_is_custom: n.titleCustom === true,
     pinned: n.pinned === true,
     tags: Array.isArray(n.tags) ? n.tags : [],
     label_color: n.labelColor || '',
-  }, { onConflict: 'id' }).then(({ error }) => {
+  };
+}
+
+function sbUpsertNote(id) {
+  if (!sb || !sessionToken || !appUserId || !notes[id]) return;
+  sb.rpc('vn_upsert_note_session', {
+    p_session_token: sessionToken,
+    p_note: notePayloadForRpc(id),
+  }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert note:', error.message);
   });
 }
 
 function sbDeleteNote(id) {
-  if (!sb || !authUserId) return;
-  sb.from('vn_notes').delete().eq('id', id).then(({ error }) => {
+  if (!sb || !sessionToken) return;
+  sb.rpc('vn_delete_note_session', {
+    p_session_token: sessionToken,
+    p_note_id: id,
+  }).then(({ error }) => {
     if (error) console.warn('[Supabase] delete note:', error.message);
   });
 }
 
 function sbUpsertFolder(id) {
-  if (!sb || !authUserId || !folders[id]) return;
+  if (!sb || !sessionToken || !appUserId || !folders[id]) return;
   const f = folders[id];
-  sb.from('vn_folders').upsert({
-    id,
-    user_id: authUserId,
-    name: f.name, created_at: f.created,
-    label_color: f.labelColor || '',
-  }, { onConflict: 'id' }).then(({ error }) => {
+  sb.rpc('vn_upsert_folder_session', {
+    p_session_token: sessionToken,
+    p_folder: {
+      id,
+      name: f.name,
+      created_at: f.created,
+      label_color: f.labelColor || '',
+    },
+  }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert folder:', error.message);
   });
 }
 
 function sbDeleteFolder(id) {
-  if (!sb || !authUserId) return;
-  sb.from('vn_folders').delete().eq('id', id).then(({ error }) => {
+  if (!sb || !sessionToken) return;
+  sb.rpc('vn_delete_folder_session', {
+    p_session_token: sessionToken,
+    p_folder_id: id,
+  }).then(({ error }) => {
     if (error) console.warn('[Supabase] delete folder:', error.message);
   });
 }
@@ -729,10 +938,10 @@ function syncSettingsControls() {
     transcribeAutoSaveToggle.checked = appPrefs.transcribeAutoSave !== false;
   }
   if (themeValue) {
-    themeValue.textContent = ({ system: 'System default', light: 'Light', dark: 'Dark' })[appPrefs.theme] || 'System default';
+    themeValue.textContent = ({ system: 'সিস্টেম ডিফল্ট', light: 'লাইট', dark: 'ডার্ক' })[appPrefs.theme] || 'সিস্টেম ডিফল্ট';
   }
   if (fontSizeValue) {
-    fontSizeValue.textContent = ({ small: 'Small', medium: 'Medium', large: 'Large' })[appPrefs.fontSize] || 'Medium';
+    fontSizeValue.textContent = ({ small: 'ছোট', medium: 'মাঝারি', large: 'বড়' })[appPrefs.fontSize] || 'মাঝারি';
   }
   if (editorPaperValue) {
     editorPaperValue.textContent = ({
@@ -760,14 +969,14 @@ function syncSettingsControls() {
     })[appPrefs.editorWidth] || 'পুরো';
   }
   if (listDensityValue) {
-    listDensityValue.textContent = ({ compact: 'Less preview', comfortable: 'Normal preview', detailed: 'More preview' })[appPrefs.listDensity] || 'Normal preview';
+    listDensityValue.textContent = ({ compact: 'কম প্রিভিউ', comfortable: 'স্বাভাবিক প্রিভিউ', detailed: 'বেশি প্রিভিউ' })[appPrefs.listDensity] || 'স্বাভাবিক প্রিভিউ';
   }
   if (autoSaveDelayValue) {
-    autoSaveDelayValue.textContent = ((appPrefs.autoSaveDelay || 2000) / 1000) + ' seconds';
+    autoSaveDelayValue.textContent = ((appPrefs.autoSaveDelay || 2000) / 1000) + ' সেকেন্ড';
   }
   if (apiKeySummary) {
     const saved = localStorage.getItem('vn-api-key');
-    apiKeySummary.textContent = saved && saved !== DEFAULT_API_KEY ? 'Custom key' : 'Default key';
+    apiKeySummary.textContent = saved && saved !== DEFAULT_API_KEY ? 'কাস্টম key' : 'ডিফল্ট key';
   }
 }
 
@@ -831,9 +1040,15 @@ function saveCurrentNote(silent = false) {
   }
 }
 
-function deleteCurrentNote() {
+async function deleteCurrentNote() {
   if (currentNoteId) {
-    if (!confirm('এই নোটটি স্থায়ীভাবে মুছে ফেলবেন?')) return;
+    const ok = await appConfirm({
+      title: 'নোট মুছবেন?',
+      message: 'এই নোটটি স্থায়ীভাবে মুছে যাবে।',
+      okText: 'মুছে ফেলুন',
+      icon: '×',
+    });
+    if (!ok) return;
     const deletedId = currentNoteId;
     delete notes[deletedId];
     persistNotes();
@@ -844,8 +1059,14 @@ function deleteCurrentNote() {
   goToList();
 }
 
-function deleteNote(id) {
-  if (!confirm('এই নোটটি স্থায়ীভাবে মুছে ফেলবেন?')) return;
+async function deleteNote(id) {
+  const ok = await appConfirm({
+    title: 'নোট মুছবেন?',
+    message: 'এই নোটটি স্থায়ীভাবে মুছে যাবে।',
+    okText: 'মুছে ফেলুন',
+    icon: '×',
+  });
+  if (!ok) return;
   delete notes[id];
   persistNotes();
   sbDeleteNote(id); // Supabase sync
@@ -1369,18 +1590,23 @@ on(folderActionLabel, 'click', () => {
   if (id) openLabelModalForFolder(id);
 });
 
-on(folderActionDelete, 'click', () => {
+on(folderActionDelete, 'click', async () => {
   if (folderActionSheet) folderActionSheet.classList.add('hidden');
   const name = folders[activeFolderActionId]?.name || 'ফোল্ডার';
   const count = Object.values(notes).filter(n => n.folderId === activeFolderActionId).length;
   const msg = count > 0
-    ? `"${name}" ফোল্ডারটি মুছলে এর ${count}টি নোট মূল তালিকায় চলে যাবে। মুছবেন?`
-    : `"${name}" ফোল্ডারটি মুছে ফেলবেন?`;
-  if (confirm(msg)) {
-    deleteFolder(activeFolderActionId);
-    renderNotesList();
-    showToast('ফোল্ডার মুছে গেছে');
-  }
+    ? `"${name}" ফোল্ডারটি মুছলে এর ${count}টি নোট মূল তালিকায় চলে যাবে।`
+    : `"${name}" ফোল্ডারটি মুছে যাবে।`;
+  const ok = await appConfirm({
+    title: 'ফোল্ডার মুছবেন?',
+    message: msg,
+    okText: 'মুছে ফেলুন',
+    icon: '×',
+  });
+  if (!ok) return;
+  deleteFolder(activeFolderActionId);
+  renderNotesList();
+  showToast('ফোল্ডার মুছে গেছে');
 });
 
 on(folderActionCancel, 'click', () => { if (folderActionSheet) folderActionSheet.classList.add('hidden'); });
@@ -1832,6 +2058,57 @@ function showToast(msg, type = 'info') {
   _toastTimer = setTimeout(() => { toastEl.className = 'toast hidden'; }, 3200);
 }
 
+function closeAppConfirm(result = false) {
+  if (appConfirmDialog) appConfirmDialog.classList.add('hidden');
+  const resolve = confirmResolver;
+  confirmResolver = null;
+  if (resolve) resolve(!!result);
+}
+
+function appConfirm({
+  title = 'নিশ্চিত করবেন?',
+  message = 'এই কাজটি চালিয়ে যেতে চান?',
+  okText = 'নিশ্চিত করুন',
+  cancelText = 'বাতিল',
+  tone = 'danger',
+  icon = '!',
+} = {}) {
+  if (!appConfirmDialog) return Promise.resolve(false);
+  if (confirmResolver) closeAppConfirm(false);
+  if (appConfirmTitle) appConfirmTitle.textContent = title;
+  if (appConfirmMessage) appConfirmMessage.textContent = message;
+  if (appConfirmOk) appConfirmOk.textContent = okText;
+  if (appConfirmCancel) appConfirmCancel.textContent = cancelText;
+  if (appConfirmIcon) appConfirmIcon.textContent = icon;
+  if (appConfirmOk) appConfirmOk.classList.toggle('app-dialog-danger-btn', tone === 'danger');
+  if (appConfirmIcon) appConfirmIcon.classList.toggle('app-dialog-icon-danger', tone === 'danger');
+  appConfirmDialog.classList.remove('hidden');
+  setTimeout(() => appConfirmCancel?.focus(), 40);
+  return new Promise(resolve => { confirmResolver = resolve; });
+}
+
+function closePinResetDialog(value = null) {
+  if (pinResetDialog) pinResetDialog.classList.add('hidden');
+  const resolve = pinResetResolver;
+  pinResetResolver = null;
+  if (resolve) resolve(value);
+}
+
+function requestPinResetValue(username) {
+  if (!pinResetDialog) {
+    showToast('PIN reset ডায়ালগ লোড হয়নি', 'error');
+    return Promise.resolve(null);
+  }
+  if (pinResetResolver) closePinResetDialog(null);
+  if (pinResetTitle) pinResetTitle.textContent = `${username || 'ইউজার'} — পিন রিসেট`;
+  if (pinResetMessage) pinResetMessage.textContent = 'নতুন পিন লিখুন। ইউজার পরের লগইনে নিজের পিন বদলাবে।';
+  if (pinResetInput) pinResetInput.value = '';
+  if (pinResetError) pinResetError.textContent = '';
+  pinResetDialog.classList.remove('hidden');
+  setTimeout(() => pinResetInput?.focus(), 80);
+  return new Promise(resolve => { pinResetResolver = resolve; });
+}
+
 /* ══════════════════════════════════════════════════
    সেটিংস পেজ
 ══════════════════════════════════════════════════ */
@@ -1850,7 +2127,7 @@ function closeSettingsPage() {
   if (screenSettings) screenSettings.classList.remove('active');
 }
 
-const SETTINGS_TAB_IDS = ['look', 'list', 'editor', 'data'];
+const SETTINGS_TAB_IDS = ['look', 'list', 'editor', 'data', 'user'];
 
 function getSettingsTabNodes() {
   return {
@@ -1873,6 +2150,7 @@ function activateSettingsTab(tabId) {
     if (p.dataset.settingsTab === id) p.removeAttribute('hidden');
     else p.setAttribute('hidden', '');
   });
+  if (id === 'user' && appIsAdmin) loadAdminUsers();
   try { localStorage.setItem('vn-settings-tab', id); } catch { /* */ }
 }
 
@@ -1935,76 +2213,165 @@ on(backupExportBtn, 'click', exportVoiceNotesBackup);
 on(backupImportBtn, 'click', () => { if (backupImportInput) backupImportInput.click(); });
 on(backupImportInput, 'change', onBackupImportFile);
 
-on(authSignOutBtn, 'click', async () => {
-  if (!sb) return;
-  const { error } = await sb.auth.signOut();
-  if (error) showToast(error.message, 'error');
-  else showToast('সাইন আউট হয়েছে', 'info');
+on(appConfirmCancel, 'click', () => closeAppConfirm(false));
+on(appConfirmOk, 'click', () => closeAppConfirm(true));
+on(appConfirmDialog, 'click', e => { if (e.target === appConfirmDialog) closeAppConfirm(false); });
+on(appConfirmDialog, 'keydown', e => {
+  if (e.key === 'Escape') closeAppConfirm(false);
+  if (e.key === 'Enter') closeAppConfirm(true);
 });
 
-function authRedirectBase() {
-  const path = window.location.pathname || '/';
-  const base = path.endsWith('/') ? path : `${path}/`;
-  return `${window.location.origin}${base}`;
-}
+on(pinResetCancel, 'click', () => closePinResetDialog(null));
+on(pinResetOk, 'click', () => {
+  const value = pinResetInput?.value || '';
+  if (value.length < 4) {
+    if (pinResetError) {
+      pinResetError.textContent = 'পিন কমপক্ষে ৪ অক্ষর দিন';
+      pinResetError.classList.add('auth-sheet-message-error');
+    }
+    return;
+  }
+  closePinResetDialog(value);
+});
+on(pinResetDialog, 'click', e => { if (e.target === pinResetDialog) closePinResetDialog(null); });
+on(pinResetInput, 'keydown', e => {
+  if (e.key === 'Escape') closePinResetDialog(null);
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    pinResetOk?.click();
+  }
+});
+
+on(authSignOutBtn, 'click', async () => {
+  await exitAppSession();
+  showToast('সাইন আউট হয়েছে', 'info');
+});
 
 on(authSigninBtn, 'click', async () => {
   if (!sb) {
     setAuthSheetMessage('ক্লায়েন্ট লোড হয়নি — পেজ রিফ্রেশ করুন', true);
     return;
   }
-  const email = (authEmail && authEmail.value ? authEmail.value : '').trim();
-  const password = authPassword && authPassword.value ? authPassword.value : '';
-  if (!email) {
-    setAuthSheetMessage('ইমেইল লিখুন', true);
+  const username = (authUsername && authUsername.value ? authUsername.value : '').trim();
+  const pin = authPassword && authPassword.value ? authPassword.value : '';
+  if (!username) {
+    setAuthSheetMessage('ইউজারনেম লিখুন', true);
     return;
   }
-  if (!password) {
-    setAuthSheetMessage('পাসওয়ার্ড লিখুন', true);
+  if (!pin || pin.length < 4) {
+    setAuthSheetMessage('পিন কমপক্ষে ৪ অক্ষর', true);
     return;
   }
   if (authSigninBtn) authSigninBtn.disabled = true;
-  setAuthSheetMessage('সাইন ইন…', false);
-  const { error } = await sb.auth.signInWithPassword({ email, password });
+  setAuthSheetMessage('লগইন…', false);
+  const { data, error } = await sb.rpc('vn_pin_login', {
+    p_username: username,
+    p_pin: pin,
+  });
   if (authSigninBtn) authSigninBtn.disabled = false;
   if (error) {
     setAuthSheetMessage(error.message, true);
     return;
   }
+  if (!data || data.ok !== true) {
+    setAuthSheetMessage(
+      data?.error === 'invalid_credentials' ? 'ভুল ইউজারনেম বা পিন' : userRpcMessage(data?.error || 'লগইন ব্যর্থ'),
+      true,
+    );
+    return;
+  }
+  persistAppSessionFromLogin(data);
   setAuthSheetMessage('', false);
-  showToast('সাইন ইন হয়েছে', 'success');
+  showToast('লগইন হয়েছে', 'success');
+  await enterAppAfterSession();
 });
 
-on(authSignupBtn, 'click', async () => {
-  if (!sb) {
-    setAuthSheetMessage('ক্লায়েন্ট লোড হয়নি — পেজ রিফ্রেশ করুন', true);
+on(adminCreateUserBtn, 'click', async () => {
+  if (!sb || !sessionToken) {
+    setAdminCreateMessage('সেশন নেই', true);
     return;
   }
-  const email = (authEmail && authEmail.value ? authEmail.value : '').trim();
-  const password = authPassword && authPassword.value ? authPassword.value : '';
-  if (!email) {
-    setAuthSheetMessage('ইমেইল লিখুন', true);
+  const nu = (adminNewUsername && adminNewUsername.value ? adminNewUsername.value : '').trim();
+  const np = adminNewPin && adminNewPin.value ? adminNewPin.value : '';
+  if (!nu) {
+    setAdminCreateMessage('নতুন ইউজারনেম লিখুন', true);
     return;
   }
-  if (!password || password.length < 6) {
-    setAuthSheetMessage('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর', true);
+  if (!np || np.length < 4) {
+    setAdminCreateMessage('পিন কমপক্ষে ৪ অক্ষর', true);
     return;
   }
-  if (authSignupBtn) authSignupBtn.disabled = true;
-  setAuthSheetMessage('অ্যাকাউন্ট তৈরি…', false);
-  const { error } = await sb.auth.signUp({
-    email,
-    password,
-    options: { emailRedirectTo: authRedirectBase() },
+  if (adminCreateUserBtn) adminCreateUserBtn.disabled = true;
+  setAdminCreateMessage('তৈরি হচ্ছে…', false);
+  const { data, error } = await sb.rpc('vn_admin_create_user', {
+    p_session_token: sessionToken,
+    p_new_username: nu,
+    p_new_pin: np,
   });
-  if (authSignupBtn) authSignupBtn.disabled = false;
+  if (adminCreateUserBtn) adminCreateUserBtn.disabled = false;
   if (error) {
-    setAuthSheetMessage(error.message, true);
+    setAdminCreateMessage(error.message, true);
     return;
   }
-  setAuthSheetMessage('চেক করুন — ইমেইল নিশ্চিতকরণ চালু থাকলে লিংকে ক্লিক করুন।', false);
-  showToast('সাইন আপ অনুরোধ পাঠানো হয়েছে', 'info');
+  if (!data || data.ok !== true) {
+    const err = data?.error || 'failed';
+    setAdminCreateMessage(
+      err === 'duplicate_username' ? 'এই ইউজারনেম আগে থেকেই আছে' : err,
+      true,
+    );
+    return;
+  }
+  if (adminNewUsername) adminNewUsername.value = '';
+  if (adminNewPin) adminNewPin.value = '';
+  setAdminCreateMessage('ইউজার তৈরি হয়েছে', false);
+  showToast(`ইউজার "${data.username}" যোগ হয়েছে`, 'success');
+  await loadAdminUsers();
 });
+
+on(accountChangePinBtn, 'click', async () => {
+  if (!sb || !sessionToken) {
+    setAccountPinMessage('সেশন নেই', true);
+    return;
+  }
+  const currentPin = accountCurrentPin?.value || '';
+  const newPin = accountNewPin?.value || '';
+  const confirmPin = accountConfirmPin?.value || '';
+  if (!currentPin) {
+    setAccountPinMessage('বর্তমান পিন লিখুন', true);
+    return;
+  }
+  if (!newPin || newPin.length < 4) {
+    setAccountPinMessage('নতুন পিন কমপক্ষে ৪ অক্ষর', true);
+    return;
+  }
+  if (newPin !== confirmPin) {
+    setAccountPinMessage('নতুন পিন দুইবার একই নয়', true);
+    return;
+  }
+  if (accountChangePinBtn) accountChangePinBtn.disabled = true;
+  setAccountPinMessage('পিন পরিবর্তন হচ্ছে…', false);
+  const { data, error } = await sb.rpc('vn_change_own_pin', {
+    p_session_token: sessionToken,
+    p_current_pin: currentPin,
+    p_new_pin: newPin,
+  });
+  if (accountChangePinBtn) accountChangePinBtn.disabled = false;
+  if (error || !data || data.ok !== true) {
+    setAccountPinMessage(error?.message || userRpcMessage(data?.error), true);
+    return;
+  }
+  if (accountCurrentPin) accountCurrentPin.value = '';
+  if (accountNewPin) accountNewPin.value = '';
+  if (accountConfirmPin) accountConfirmPin.value = '';
+  appMustChangePin = false;
+  try { localStorage.setItem('vn-app-must-change-pin', '0'); } catch { /* */ }
+  updateCloudSyncSummary();
+  setAccountPinMessage('পিন পরিবর্তন হয়েছে', false);
+  showToast('পিন পরিবর্তন হয়েছে', 'success');
+  if (appIsAdmin) loadAdminUsers();
+});
+
+on(adminRefreshUsersBtn, 'click', loadAdminUsers);
 
 on(authPassword, 'keydown', e => {
   if (e.key !== 'Enter') return;
@@ -2016,6 +2383,18 @@ on(toggleEyeBtn, 'click', () => {
   if (!apiKeyInput) return;
   apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
   if (toggleEyeBtn) toggleEyeBtn.style.color = apiKeyInput.type === 'text' ? 'var(--accent)' : '';
+});
+
+on(authPinToggle, 'click', () => {
+  if (!authPassword) return;
+  authPassword.type = authPassword.type === 'password' ? 'text' : 'password';
+  if (authPinToggle) authPinToggle.style.color = authPassword.type === 'text' ? 'var(--accent)' : '';
+});
+
+on(adminNewPinToggle, 'click', () => {
+  if (!adminNewPin) return;
+  adminNewPin.type = adminNewPin.type === 'password' ? 'text' : 'password';
+  if (adminNewPinToggle) adminNewPinToggle.style.color = adminNewPin.type === 'text' ? 'var(--accent)' : '';
 });
 
 on(saveKeyBtn, 'click', () => {

@@ -31,18 +31,23 @@
         </svg>
       </div>
       <h1 id="auth-gate-title" class="auth-title">Voice Notes</h1>
-      <p class="auth-lead">ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন। ক্লাউড সিঙ্ক শুধু আপনার অ্যাকাউন্টে।</p>
-      <label class="modal-label" for="auth-email">ইমেইল</label>
-      <div class="key-input-wrap auth-email-wrap">
-        <input type="email" id="auth-email" class="key-input" inputmode="email" autocomplete="username" placeholder="you@example.com" />
+      <p class="auth-lead">ইউজারনেম ও পিন দিয়ে লগইন। প্রথম অ্যাডমিন SQL দিয়ে তৈরি (ডিফল্ট: <strong>admin</strong> / পিন <strong>admin</strong>) — অবশ্যই পরে বদলান।</p>
+      <label class="modal-label vn-credential-label" for="auth-username">ইউজারনেম</label>
+      <div class="key-input-wrap vn-credential-wrap auth-email-wrap">
+        <input type="text" id="auth-username" class="key-input vn-credential-input" inputmode="text" autocomplete="username" placeholder="admin" autocapitalize="none" spellcheck="false" />
       </div>
-      <label class="modal-label" for="auth-password" style="margin-top:12px;display:block">পাসওয়ার্ড</label>
-      <div class="key-input-wrap">
-        <input type="password" id="auth-password" class="key-input" autocomplete="current-password" placeholder="••••••••" />
+      <label class="modal-label vn-credential-label" for="auth-password" style="margin-top:12px;display:block">পিন</label>
+      <div class="key-input-wrap vn-credential-wrap">
+        <input type="password" id="auth-password" class="key-input vn-credential-input" autocomplete="current-password" placeholder="পিন লিখুন" />
+        <button type="button" class="toggle-eye-btn vn-credential-toggle" id="auth-pin-toggle" aria-label="পিন দেখান বা লুকান">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
       </div>
       <p id="auth-sheet-message" class="auth-sheet-message" role="status"></p>
-      <button type="button" class="modal-btn-primary auth-submit" id="auth-signin-btn">সাইন ইন</button>
-      <button type="button" class="modal-btn-secondary auth-secondary-btn" id="auth-signup-btn">নতুন অ্যাকাউন্ট (সাইন আপ)</button>
+      <button type="button" class="modal-btn-primary auth-submit" id="auth-signin-btn">লগইন</button>
     </div>
   </div>
 
@@ -213,7 +218,7 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"/>
             </svg>
-            DONE
+            শেষ
           </button>
         </div>
       </div>
@@ -239,6 +244,7 @@
         <button type="button" class="settings-tab" role="tab" id="settings-tab-list" data-settings-tab="list" aria-controls="settings-panel-list" aria-selected="false" tabindex="-1">তালিকা</button>
         <button type="button" class="settings-tab" role="tab" id="settings-tab-editor" data-settings-tab="editor" aria-controls="settings-panel-editor" aria-selected="false" tabindex="-1">এডিটর</button>
         <button type="button" class="settings-tab" role="tab" id="settings-tab-data" data-settings-tab="data" aria-controls="settings-panel-data" aria-selected="false" tabindex="-1">ডেটা</button>
+        <button type="button" class="settings-tab" role="tab" id="settings-tab-user" data-settings-tab="user" aria-controls="settings-panel-user" aria-selected="false" tabindex="-1">ইউজার</button>
       </div>
 
       <div class="settings-panels">
@@ -248,28 +254,28 @@
               <div class="settings-row-main">
                 <span class="settings-icon">◐</span>
                 <div>
-                  <p class="settings-row-title">Theme</p>
-                  <p class="settings-row-sub" id="theme-value">System</p>
+                  <p class="settings-row-title">থিম</p>
+                  <p class="settings-row-sub" id="theme-value">সিস্টেম</p>
                 </div>
               </div>
               <div class="segmented-control segmented-control-compact" data-setting="theme" role="group" aria-label="থিম">
-                <button type="button" data-value="system">Auto</button>
-                <button type="button" data-value="light">Light</button>
-                <button type="button" data-value="dark">Dark</button>
+                <button type="button" data-value="system">অটো</button>
+                <button type="button" data-value="light">লাইট</button>
+                <button type="button" data-value="dark">ডার্ক</button>
               </div>
             </div>
             <div class="settings-row settings-row-stack">
               <div class="settings-row-main">
                 <span class="settings-icon">Aa</span>
                 <div>
-                  <p class="settings-row-title">Editor Text</p>
-                  <p class="settings-row-sub" id="font-size-value">Medium</p>
+                  <p class="settings-row-title">লেখার ফন্ট</p>
+                  <p class="settings-row-sub" id="font-size-value">মাঝারি</p>
                 </div>
               </div>
               <div class="segmented-control segmented-control-compact" data-setting="fontSize" role="group" aria-label="ফন্ট সাইজ">
-                <button type="button" data-value="small">Small</button>
-                <button type="button" data-value="medium">Med</button>
-                <button type="button" data-value="large">Large</button>
+                <button type="button" data-value="small">ছোট</button>
+                <button type="button" data-value="medium">মাঝারি</button>
+                <button type="button" data-value="large">বড়</button>
               </div>
             </div>
             <div class="settings-row settings-row-stack">
@@ -310,28 +316,28 @@
               <div class="settings-row-main">
                 <span class="settings-icon">↕</span>
                 <div>
-                  <p class="settings-row-title">Default Sort</p>
-                  <p class="settings-row-sub" id="settings-sort-summary">Recent update</p>
+                  <p class="settings-row-title">ডিফল্ট সাজানো</p>
+                  <p class="settings-row-sub" id="settings-sort-summary">সাম্প্রতিক আপডেট</p>
                 </div>
               </div>
               <div class="settings-list-options settings-list-options-inline" data-setting="defaultSort">
-                <button type="button" data-value="updated_desc">Recent</button>
-                <button type="button" data-value="created_desc">Created</button>
-                <button type="button" data-value="title_asc">Title</button>
+                <button type="button" data-value="updated_desc">সাম্প্রতিক</button>
+                <button type="button" data-value="created_desc">তৈরি</button>
+                <button type="button" data-value="title_asc">নাম</button>
               </div>
             </div>
             <div class="settings-row settings-row-stack">
               <div class="settings-row-main">
                 <span class="settings-icon">☰</span>
                 <div>
-                  <p class="settings-row-title">Preview</p>
-                  <p class="settings-row-sub" id="list-density-value">Comfortable</p>
+                  <p class="settings-row-title">প্রিভিউ</p>
+                  <p class="settings-row-sub" id="list-density-value">স্বাভাবিক</p>
                 </div>
               </div>
               <div class="segmented-control segmented-control-compact" data-setting="listDensity" role="group" aria-label="নোট প্রিভিউ">
-                <button type="button" data-value="compact">Less</button>
-                <button type="button" data-value="comfortable">Normal</button>
-                <button type="button" data-value="detailed">More</button>
+                <button type="button" data-value="compact">কম</button>
+                <button type="button" data-value="comfortable">স্বাভাবিক</button>
+                <button type="button" data-value="detailed">বেশি</button>
               </div>
             </div>
           </div>
@@ -343,8 +349,8 @@
               <div class="settings-row-main">
                 <span class="settings-icon">✓</span>
                 <div>
-                  <p class="settings-row-title">Auto Save</p>
-                  <p class="settings-row-sub" id="autosave-delay-value">2 seconds</p>
+                  <p class="settings-row-title">অটো সেভ</p>
+                  <p class="settings-row-sub" id="autosave-delay-value">২ সেকেন্ড</p>
                 </div>
               </div>
               <div class="segmented-control segmented-control-compact" data-setting="autoSaveDelay" role="group" aria-label="অটো-সেভ বিরতি">
@@ -357,7 +363,7 @@
               <div class="settings-row-main">
                 <span class="settings-icon">🎙</span>
                 <div>
-                  <p class="settings-row-title">Save after transcript</p>
+                  <p class="settings-row-title">ট্রান্সক্রিপ্টের পর সেভ</p>
                   <p class="settings-row-sub">রেকর্ডিং লেখা এলে নিজে সেভ</p>
                 </div>
               </div>
@@ -409,25 +415,6 @@
               </div>
               <span class="settings-chevron">›</span>
             </button>
-            <div class="settings-row">
-              <div class="settings-row-main">
-                <span class="settings-status-dot"></span>
-                <div>
-                  <p class="settings-row-title">ক্লাউড</p>
-                  <p class="settings-row-sub" id="cloud-sync-summary">সংযুক্ত</p>
-                </div>
-              </div>
-            </div>
-            <button type="button" class="settings-row settings-row-button hidden" id="auth-sign-out-btn">
-              <div class="settings-row-main">
-                <span class="settings-icon">⎋</span>
-                <div>
-                  <p class="settings-row-title">সাইন আউট</p>
-                  <p class="settings-row-sub">এই ডিভাইসে সেশন শেষ</p>
-                </div>
-              </div>
-              <span class="settings-chevron">›</span>
-            </button>
             <button type="button" class="settings-row settings-row-button" id="backup-export-btn">
               <div class="settings-row-main">
                 <span class="settings-icon">↓</span>
@@ -449,6 +436,80 @@
               <span class="settings-chevron">›</span>
             </button>
             <input type="file" id="backup-import-input" class="hidden" accept="application/json,.json" />
+          </div>
+        </div>
+
+        <div class="settings-tab-panel" role="tabpanel" id="settings-panel-user" data-settings-tab="user" aria-labelledby="settings-tab-user" hidden>
+          <div class="settings-group">
+            <div class="settings-row">
+              <div class="settings-row-main">
+                <span class="settings-status-dot"></span>
+                <div>
+                  <p class="settings-row-title">ক্লাউড অ্যাকাউন্ট</p>
+                  <p class="settings-row-sub" id="cloud-sync-summary">সংযুক্ত</p>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="settings-row settings-row-button hidden" id="auth-sign-out-btn">
+              <div class="settings-row-main">
+                <span class="settings-icon">⎋</span>
+                <div>
+                  <p class="settings-row-title">সাইন আউট</p>
+                  <p class="settings-row-sub">এই ডিভাইসে সেশন শেষ</p>
+                </div>
+              </div>
+              <span class="settings-chevron">›</span>
+            </button>
+
+            <div class="settings-user-section">
+              <div id="account-pin-required-alert" class="settings-alert settings-alert-warning hidden">
+                <strong>পিন বদলানো দরকার</strong>
+                <span>এই অ্যাকাউন্টে অস্থায়ী/ডিফল্ট পিন ব্যবহার হচ্ছে। নিরাপত্তার জন্য এখনই নতুন পিন দিন।</span>
+              </div>
+              <p class="settings-user-section-title">নিজের পিন পরিবর্তন</p>
+              <p class="settings-user-admin-hint">নিরাপত্তার জন্য প্রথম লগইনের পর ডিফল্ট পিন বদলে ফেলুন।</p>
+              <label class="vn-credential-label" for="account-current-pin">বর্তমান পিন</label>
+              <div class="key-input-wrap vn-credential-wrap settings-user-field">
+                <input type="password" id="account-current-pin" class="key-input vn-credential-input" autocomplete="current-password" placeholder="বর্তমান পিন" />
+              </div>
+              <label class="vn-credential-label" for="account-new-pin">নতুন পিন</label>
+              <div class="key-input-wrap vn-credential-wrap settings-user-field">
+                <input type="password" id="account-new-pin" class="key-input vn-credential-input" autocomplete="new-password" placeholder="কমপক্ষে ৪ অক্ষর" />
+              </div>
+              <label class="vn-credential-label" for="account-confirm-pin">নতুন পিন আবার লিখুন</label>
+              <div class="key-input-wrap vn-credential-wrap settings-user-field">
+                <input type="password" id="account-confirm-pin" class="key-input vn-credential-input" autocomplete="new-password" placeholder="নতুন পিন নিশ্চিত করুন" />
+              </div>
+              <button type="button" class="modal-btn-primary settings-user-create-btn" id="account-change-pin-btn">পিন পরিবর্তন করুন</button>
+              <p id="account-pin-message" class="auth-sheet-message settings-user-create-msg" role="status"></p>
+            </div>
+
+            <div id="admin-user-create-block" class="settings-user-admin hidden">
+              <p class="settings-user-section-title">অ্যাডমিন ইউজার ম্যানেজমেন্ট</p>
+              <p class="settings-user-admin-hint">নতুন ইউজার ও পিন তৈরি করুন। একই ইউজারনেম দুবার যাবে না।</p>
+              <label class="vn-credential-label" for="admin-new-username">নতুন ইউজারনেম</label>
+              <div class="key-input-wrap vn-credential-wrap settings-user-field">
+                <input type="text" id="admin-new-username" class="key-input vn-credential-input" autocomplete="off" placeholder="যেমন: রহিম" autocapitalize="none" spellcheck="false" />
+              </div>
+              <label class="vn-credential-label" for="admin-new-pin">পিন (কমপক্ষে ৪ অক্ষর)</label>
+              <div class="key-input-wrap vn-credential-wrap settings-user-field">
+                <input type="password" id="admin-new-pin" class="key-input vn-credential-input" autocomplete="new-password" placeholder="পিন লিখুন" />
+                <button type="button" class="toggle-eye-btn vn-credential-toggle" id="admin-new-pin-toggle" aria-label="পিন দেখান বা লুকান">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                </button>
+              </div>
+              <button type="button" class="modal-btn-primary settings-user-create-btn" id="admin-create-user-btn">ইউজার তৈরি করুন</button>
+              <p id="admin-create-message" class="auth-sheet-message settings-user-create-msg" role="status"></p>
+
+              <div class="settings-user-list-head">
+                <p class="settings-user-section-title">ইউজার তালিকা</p>
+                <button type="button" class="settings-mini-btn" id="admin-refresh-users-btn">রিফ্রেশ</button>
+              </div>
+              <div id="admin-users-list" class="settings-user-list" aria-live="polite"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -509,6 +570,44 @@
        টোস্ট
   ══════════════════════════════════════ -->
   <div id="toast" class="toast hidden"></div>
+
+  <!-- ══════════════════════════════════════
+       অ্যাপ কনফার্মেশন ডায়ালগ
+  ══════════════════════════════════════ -->
+  <div id="app-confirm-dialog" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title">
+    <div class="modal-card app-dialog-card">
+      <div class="app-dialog-icon" id="app-confirm-icon" aria-hidden="true">!</div>
+      <div class="app-dialog-body">
+        <h2 id="app-confirm-title" class="app-dialog-title">নিশ্চিত করবেন?</h2>
+        <p id="app-confirm-message" class="app-dialog-message">এই কাজটি চালিয়ে যেতে চান?</p>
+      </div>
+      <div class="app-dialog-actions">
+        <button type="button" class="modal-btn-secondary" id="app-confirm-cancel">বাতিল</button>
+        <button type="button" class="modal-btn-primary app-dialog-danger-btn" id="app-confirm-ok">নিশ্চিত করুন</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       অ্যাডমিন PIN reset ডায়ালগ
+  ══════════════════════════════════════ -->
+  <div id="pin-reset-dialog" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="pin-reset-title">
+    <div class="modal-card app-dialog-card">
+      <div class="app-dialog-body">
+        <h2 id="pin-reset-title" class="app-dialog-title">পিন রিসেট</h2>
+        <p id="pin-reset-message" class="app-dialog-message">নতুন পিন লিখুন। ইউজার পরের লগইনে পিন বদলাবে।</p>
+        <label class="vn-credential-label" for="pin-reset-input">নতুন PIN</label>
+        <div class="key-input-wrap vn-credential-wrap">
+          <input type="password" id="pin-reset-input" class="key-input vn-credential-input" autocomplete="new-password" placeholder="কমপক্ষে ৪ অক্ষর" />
+        </div>
+        <p id="pin-reset-error" class="auth-sheet-message app-dialog-error" role="status"></p>
+      </div>
+      <div class="app-dialog-actions">
+        <button type="button" class="modal-btn-secondary" id="pin-reset-cancel">বাতিল</button>
+        <button type="button" class="modal-btn-primary" id="pin-reset-ok">পিন রিসেট</button>
+      </div>
+    </div>
+  </div>
 
 
   <!-- ══════════════════════════════════════
