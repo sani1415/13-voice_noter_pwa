@@ -38,6 +38,12 @@
         <span class="header-title">Voice Notes</span>
       </div>
       <div style="display:flex;gap:2px;align-items:center;">
+        <button type="button" class="header-icon-btn" id="list-sort-btn" aria-label="নোট সর্ট করুন" aria-haspopup="dialog" aria-expanded="false" aria-controls="sort-sheet">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 7h8M4 12h12M4 17h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M18 6v12m0 0 3-3m-3 3-3-3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <button class="header-icon-btn" id="settings-btn" aria-label="সেটিংস">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -72,6 +78,12 @@
           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
         </svg>
       </button>
+      <button type="button" class="header-icon-btn" id="folder-sort-btn" aria-label="নোট সর্ট করুন" aria-haspopup="dialog" aria-expanded="false" aria-controls="sort-sheet">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 7h8M4 12h12M4 17h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M18 6v12m0 0 3-3m-3 3-3-3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
       <button class="header-icon-btn" id="new-note-in-folder-btn" aria-label="নতুন নোট">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -79,14 +91,9 @@
       </button>
     </header>
 
-    <div class="list-toolbar" id="list-toolbar" aria-label="তালিকা সরঞ্জাম">
-      <div class="list-toolbar-left"></div>
-      <button type="button" class="list-sort-btn" id="list-sort-btn" aria-haspopup="dialog" aria-expanded="false" aria-controls="sort-sheet">
-        <span class="list-sort-prefix">নোট সর্ট</span>
-        <span class="list-sort-mid" aria-hidden="true">·</span>
-        <span id="list-sort-label">আপডেট · নতুন আগে</span>
-        <span class="list-sort-chevron" aria-hidden="true">▾</span>
-      </button>
+    <div class="list-search-wrap" id="list-search-wrap">
+      <input type="search" id="list-search-input" class="list-search-input" placeholder="নোট খুঁজুন (শিরোনাম বা লেখা)" autocomplete="off" enterkeyhint="search" />
+      <button type="button" class="list-search-clear hidden" id="list-search-clear" aria-label="খোঁজা খালি করুন">×</button>
     </div>
 
     <div id="empty-state" class="empty-state hidden">
@@ -200,84 +207,250 @@
       <span style="min-width:42px" aria-hidden="true"></span>
     </header>
     <div class="settings-page" id="settings-page">
-      <p class="settings-lead">নিচে ভবিষ্যৎে যোগ হওয়ার মতো অপশনের ধারণা এবং এখন কার্যকর অংশ। আপনি চাইলে পরে আরও কাস্টমাইজেশন (থিম, ফন্ট, ইত্যাদি) এখান থেকে ঠিক করতে পারবেন।</p>
+      <div class="settings-tabs" role="tablist" aria-label="সেটিংস বিভাগ">
+        <button type="button" class="settings-tab" role="tab" id="settings-tab-look" data-settings-tab="look" aria-controls="settings-panel-look" aria-selected="true">চেহারা</button>
+        <button type="button" class="settings-tab" role="tab" id="settings-tab-list" data-settings-tab="list" aria-controls="settings-panel-list" aria-selected="false" tabindex="-1">তালিকা</button>
+        <button type="button" class="settings-tab" role="tab" id="settings-tab-editor" data-settings-tab="editor" aria-controls="settings-panel-editor" aria-selected="false" tabindex="-1">এডিটর</button>
+        <button type="button" class="settings-tab" role="tab" id="settings-tab-data" data-settings-tab="data" aria-controls="settings-panel-data" aria-selected="false" tabindex="-1">ডেটা</button>
+      </div>
 
-      <section class="settings-section" aria-labelledby="sec-ai">
-        <h2 class="settings-section-title" id="sec-ai">রেকর্ডিং ও AI</h2>
-        <div class="settings-card">
-          <form id="api-key-form" class="api-key-form" action="#" method="get" onsubmit="return false;" autocomplete="off">
-            <label class="modal-label" for="api-key-input">Gemini API Key</label>
-            <p class="settings-card-desc">ভয়েস → টেক্সট (ট্রান্সক্রিপশন) এ ব্যবহার হয়।</p>
-            <div class="key-input-wrap">
-              <input name="api_key" type="password" id="api-key-input" class="key-input" placeholder="AIzaSy…" autocomplete="off" spellcheck="false"/>
-              <button type="button" class="toggle-eye-btn" id="toggle-eye-btn" aria-label="দেখুন/লুকান">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                  <circle cx="12" cy="12" r="3"/>
-                </svg>
-              </button>
+      <div class="settings-panels">
+        <div class="settings-tab-panel" role="tabpanel" id="settings-panel-look" data-settings-tab="look" aria-labelledby="settings-tab-look">
+          <div class="settings-group">
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">◐</span>
+                <div>
+                  <p class="settings-row-title">Theme</p>
+                  <p class="settings-row-sub" id="theme-value">System</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="theme" role="group" aria-label="থিম">
+                <button type="button" data-value="system">Auto</button>
+                <button type="button" data-value="light">Light</button>
+                <button type="button" data-value="dark">Dark</button>
+              </div>
             </div>
-          </form>
-          <p class="modal-hint">রিফ্রেশের পরেও স্থায়ী (এই ব্রাউজারে)</p>
-          <div id="key-status" class="key-status"></div>
-          <div class="settings-row-btns">
-            <button type="button" class="modal-btn-secondary" id="reset-key-btn">ডিফল্টে ফেরত</button>
-            <button type="button" class="modal-btn-primary" id="save-key-btn">Key সেভ</button>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">Aa</span>
+                <div>
+                  <p class="settings-row-title">Editor Text</p>
+                  <p class="settings-row-sub" id="font-size-value">Medium</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="fontSize" role="group" aria-label="ফন্ট সাইজ">
+                <button type="button" data-value="small">Small</button>
+                <button type="button" data-value="medium">Med</button>
+                <button type="button" data-value="large">Large</button>
+              </div>
+            </div>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">▣</span>
+                <div>
+                  <p class="settings-row-title">নোটের পটভূমি</p>
+                  <p class="settings-row-sub" id="editor-paper-value">ডিফল্ট</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="editorPaper" role="group" aria-label="এডিটর পটভূমি">
+                <button type="button" data-value="default">ডিফল্ট</button>
+                <button type="button" data-value="cream">ক্রিম</button>
+                <button type="button" data-value="cool">ঠান্ডা</button>
+                <button type="button" data-value="oled">OLED</button>
+              </div>
+            </div>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">●</span>
+                <div>
+                  <p class="settings-row-title">অ্যাকসেন্ট রঙ</p>
+                  <p class="settings-row-sub" id="accent-value">নীল</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="accent" role="group" aria-label="অ্যাকসেন্ট">
+                <button type="button" data-value="blue">নীল</button>
+                <button type="button" data-value="teal">টিল</button>
+                <button type="button" data-value="violet">বেগুনি</button>
+              </div>
+            </div>
           </div>
         </div>
-      </section>
 
-      <section class="settings-section" aria-labelledby="sec-look">
-        <h2 class="settings-section-title" id="sec-look">চেহারা ও পাঠ</h2>
-        <div class="settings-card settings-card--muted">
-          <p class="settings-card-title">থিম (হালকা / গাঢ়)</p>
-          <p class="settings-card-desc">আসন্ন আপডেট — পুরো অ্যাপের রঙ ও কনট্রাস্ট।</p>
+        <div class="settings-tab-panel" role="tabpanel" id="settings-panel-list" data-settings-tab="list" aria-labelledby="settings-tab-list" hidden>
+          <div class="settings-group">
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">↕</span>
+                <div>
+                  <p class="settings-row-title">Default Sort</p>
+                  <p class="settings-row-sub" id="settings-sort-summary">Recent update</p>
+                </div>
+              </div>
+              <div class="settings-list-options settings-list-options-inline" data-setting="defaultSort">
+                <button type="button" data-value="updated_desc">Recent</button>
+                <button type="button" data-value="created_desc">Created</button>
+                <button type="button" data-value="title_asc">Title</button>
+              </div>
+            </div>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">☰</span>
+                <div>
+                  <p class="settings-row-title">Preview</p>
+                  <p class="settings-row-sub" id="list-density-value">Comfortable</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="listDensity" role="group" aria-label="নোট প্রিভিউ">
+                <button type="button" data-value="compact">Less</button>
+                <button type="button" data-value="comfortable">Normal</button>
+                <button type="button" data-value="detailed">More</button>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="settings-card settings-card--muted">
-          <p class="settings-card-title">ফন্ট সাইজ</p>
-          <p class="settings-card-desc">নোট এডিটরে লেখার আকার (ছোট / মাঝারি / বড়)।</p>
-        </div>
-      </section>
 
-      <section class="settings-section" aria-labelledby="sec-list">
-        <h2 class="settings-section-title" id="sec-list">তালিকা</h2>
-        <div class="settings-card">
-          <p class="settings-card-title">ডিফল্ট সর্ট</p>
-          <p class="settings-card-desc">মূল বা ফোল্ডার স্ক্রিনে তালিকার উপরের ডানদিকে <strong>সর্ট</strong> বাটন — একই সেটিং এখানে সারাংশ হিসেবে দেখা যায়।</p>
-          <p class="settings-card-desc" id="settings-sort-summary"></p>
+        <div class="settings-tab-panel" role="tabpanel" id="settings-panel-editor" data-settings-tab="editor" aria-labelledby="settings-tab-editor" hidden>
+          <div class="settings-group">
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">✓</span>
+                <div>
+                  <p class="settings-row-title">Auto Save</p>
+                  <p class="settings-row-sub" id="autosave-delay-value">2 seconds</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="autoSaveDelay" role="group" aria-label="অটো-সেভ বিরতি">
+                <button type="button" data-value="1000">1s</button>
+                <button type="button" data-value="2000">2s</button>
+                <button type="button" data-value="5000">5s</button>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="settings-row-main">
+                <span class="settings-icon">🎙</span>
+                <div>
+                  <p class="settings-row-title">Save after transcript</p>
+                  <p class="settings-row-sub">রেকর্ডিং লেখা এলে নিজে সেভ</p>
+                </div>
+              </div>
+              <label class="settings-switch">
+                <input type="checkbox" id="pref-transcribe-autosave">
+                <span></span>
+              </label>
+            </div>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">↕</span>
+                <div>
+                  <p class="settings-row-title">লাইনে লাইনে ফাঁক</p>
+                  <p class="settings-row-sub" id="line-height-value">মাঝারি</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="lineHeight" role="group" aria-label="লাইনের মাঝে কতটা ফাঁক থাকবে">
+                <button type="button" data-value="compact">কম ফাঁক</button>
+                <button type="button" data-value="normal">মাঝারি</button>
+                <button type="button" data-value="relaxed">বেশি ফাঁক</button>
+              </div>
+            </div>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
+                <span class="settings-icon">▤</span>
+                <div>
+                  <p class="settings-row-title">নোট কতটা চওড়া</p>
+                  <p class="settings-row-sub" id="editor-width-value">পুরো</p>
+                </div>
+              </div>
+              <div class="segmented-control segmented-control-compact" data-setting="editorWidth" role="group" aria-label="লেখার জায়গা কতটা চওড়া হবে">
+                <button type="button" data-value="full">পুরো</button>
+                <button type="button" data-value="balanced">মাঝখানে</button>
+                <button type="button" data-value="narrow">সরু</button>
+              </div>
+            </div>
+          </div>
         </div>
-      </section>
 
-      <section class="settings-section" aria-labelledby="sec-data">
-        <h2 class="settings-section-title" id="sec-data">ডেটা</h2>
-        <div class="settings-card settings-card--muted">
-          <p class="settings-card-title">ক্লাউড সিঙ্ক (Supabase)</p>
-          <p class="settings-card-desc">অ্যাকাউন্ট/ব্যাকআপ নিয়ে নিয়ম পরে সাজানো যাবে।</p>
+        <div class="settings-tab-panel" role="tabpanel" id="settings-panel-data" data-settings-tab="data" aria-labelledby="settings-tab-data" hidden>
+          <div class="settings-group">
+            <button type="button" class="settings-row settings-row-button" id="api-key-row">
+              <div class="settings-row-main">
+                <span class="settings-icon">◆</span>
+                <div>
+                  <p class="settings-row-title">Gemini API Key</p>
+                  <p class="settings-row-sub" id="api-key-summary">Default key</p>
+                </div>
+              </div>
+              <span class="settings-chevron">›</span>
+            </button>
+            <div class="settings-row">
+              <div class="settings-row-main">
+                <span class="settings-status-dot"></span>
+                <div>
+                  <p class="settings-row-title">Cloud Sync</p>
+                  <p class="settings-row-sub">Supabase connected</p>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="settings-row settings-row-button" id="backup-export-btn">
+              <div class="settings-row-main">
+                <span class="settings-icon">↓</span>
+                <div>
+                  <p class="settings-row-title">JSON ব্যাকআপ ডাউনলোড</p>
+                  <p class="settings-row-sub">নোট ও ফোল্ডার এক ফাইলে</p>
+                </div>
+              </div>
+              <span class="settings-chevron">›</span>
+            </button>
+            <button type="button" class="settings-row settings-row-button" id="backup-import-btn">
+              <div class="settings-row-main">
+                <span class="settings-icon">↑</span>
+                <div>
+                  <p class="settings-row-title">JSON থেকে পুনরুদ্ধার</p>
+                  <p class="settings-row-sub">বর্তমান ডেটা মুছে ফাইল বসাবে</p>
+                </div>
+              </div>
+              <span class="settings-chevron">›</span>
+            </button>
+            <input type="file" id="backup-import-input" class="hidden" accept="application/json,.json" />
+          </div>
         </div>
-        <div class="settings-card settings-card--muted">
-          <p class="settings-card-title">রপ্তানি / আমদানি</p>
-          <p class="settings-card-desc">JSON বা পাঠ্য হিসেবে নোট বের করা / আনা।</p>
-        </div>
-      </section>
+      </div>
+    </div>
+  </div>
 
-      <section class="settings-section" aria-labelledby="sec-more">
-        <h2 class="settings-section-title" id="sec-more">আরও সম্ভাব্য অপশন</h2>
-        <ul class="settings-ideas">
-          <li>অটো-সেভ বিরতি (কত সেকেন্ড পরে)</li>
-          <li>রেকর্ডিং কোয়ালিটি / ফরম্যাট</li>
-          <li>ট্রান্সক্রিপশন ভাষা/মডেল</li>
-          <li>বিজ্ঞপ্তি রিমাইন্ডার</li>
-          <li>অ্যাক্সেসিবিলিটি (টেক্সট সাইজ সিস্টেম অনুসরণ)</li>
-        </ul>
-      </section>
-
-      <section class="settings-section" aria-labelledby="sec-about">
-        <h2 class="settings-section-title" id="sec-about">অ্যাপ</h2>
-        <div class="settings-card">
-          <p class="settings-card-title">Voice Notes PWA</p>
-          <p class="settings-card-desc">অফলাইন-ফ্রেন্ডলি নোট ও ভয়েস। ব্যাক বাটনে ফিরে যান।</p>
-        </div>
-      </section>
+  <!-- ══════════════════════════════════════
+       API Key শিট
+  ══════════════════════════════════════ -->
+  <div id="api-key-sheet" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">Gemini API Key</span>
+        <button type="button" class="modal-close-btn" id="api-key-sheet-close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="api-key-form" class="api-key-form" action="#" method="get" onsubmit="return false;" autocomplete="off">
+          <label class="modal-label" for="api-key-input">API Key</label>
+          <div class="key-input-wrap">
+            <input name="api_key" type="password" id="api-key-input" class="key-input" placeholder="AIzaSy…" autocomplete="off" spellcheck="false"/>
+            <button type="button" class="toggle-eye-btn" id="toggle-eye-btn" aria-label="দেখুন/লুকান">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+        </form>
+        <p class="modal-hint">রিফ্রেশের পরেও এই ব্রাউজারে সেভ থাকবে</p>
+        <div id="key-status" class="key-status"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="modal-btn-secondary" id="reset-key-btn">ডিফল্টে ফেরত</button>
+        <button type="button" class="modal-btn-primary" id="save-key-btn">সেভ করুন</button>
+      </div>
     </div>
   </div>
 
@@ -341,6 +514,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         নাম পরিবর্তন
       </button>
+      <button type="button" class="action-sheet-btn" id="folder-action-label">রঙের লেবেল</button>
       <button class="action-sheet-btn danger" id="folder-action-delete">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
         ফোল্ডার মুছুন
@@ -381,6 +555,9 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="16 2 12 6 8 2"/></svg>
         অন্য ফোল্ডারে সরান
       </button>
+      <button type="button" class="action-sheet-btn" id="note-action-pin">পিন করুন</button>
+      <button type="button" class="action-sheet-btn" id="note-action-tags">ট্যাগ ঠিক করুন</button>
+      <button type="button" class="action-sheet-btn" id="note-action-label">রঙের লেবেল</button>
       <button type="button" class="action-sheet-btn danger" id="note-action-delete">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
         মুছুন
@@ -392,6 +569,51 @@
   <!-- ══════════════════════════════════════
        নোটের নাম (মোডাল)
   ══════════════════════════════════════ -->
+  <!-- ট্যাগ মোডাল -->
+  <div id="tags-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">ট্যাগ</span>
+        <button type="button" class="modal-close-btn" id="tags-modal-close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p class="tags-modal-hint">কমা বা নতুন লাইন দিয়ে আলাদা করুন। সর্বোচ্চ ৫টি।</p>
+        <div class="key-input-wrap">
+          <input type="text" id="tags-input" class="key-input" placeholder="যেমন: কাজ, ব্যক্তিগত" autocomplete="off" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="modal-btn-secondary" id="tags-modal-cancel">বাতিল</button>
+        <button type="button" class="modal-btn-primary" id="tags-modal-save">সেভ করুন</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- রঙের লেবেল -->
+  <div id="label-modal" class="modal-overlay hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span class="modal-title">রঙের লেবেল</span>
+        <button type="button" class="modal-close-btn" id="label-modal-close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body label-modal-body">
+        <p class="tags-modal-hint">নোটে বাম দাগ; ফোল্ডারে শুধু ফোল্ডার আইকনের রঙ</p>
+        <div class="label-swatch-row" id="label-swatch-row" role="group" aria-label="লেবেল রঙ"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="modal-btn-secondary" id="label-modal-cancel">বন্ধ</button>
+      </div>
+    </div>
+  </div>
+
   <div id="note-form-modal" class="modal-overlay hidden">
     <div class="modal-card">
       <div class="modal-header">

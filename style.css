@@ -26,11 +26,154 @@
   --card-bg:    #ffffff;
   --divider:    #e5dfd7;
   --note-date:  #a89888;
+  --editor-surface:    #fefdf8;
+  --editor-placeholder: #b8b0a8;
 
   --safe-top:    env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left:   env(safe-area-inset-left, 0px);
   --safe-right:  env(safe-area-inset-right, 0px);
+}
+
+html[data-theme="dark"] {
+  --bg:         #101523;
+  --panel:      #0b1020;
+  --panel-lt:   #172036;
+  --accent:     #6aa9ef;
+  --accent-lt:  #8bc0ff;
+  --text:       #edf2fb;
+  --hint:       #9aa9c1;
+  --border:     #2a3448;
+  --card-bg:    #151c2d;
+  --divider:    #263149;
+  --note-date:  #8d9bb3;
+  --editor-surface:     #151b2b;
+  --editor-placeholder: #6d7d95;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --bg:         #101523;
+    --panel:      #0b1020;
+    --panel-lt:   #172036;
+    --accent:     #6aa9ef;
+    --accent-lt:  #8bc0ff;
+    --text:       #edf2fb;
+    --hint:       #9aa9c1;
+    --border:     #2a3448;
+    --card-bg:    #151c2d;
+    --divider:    #263149;
+    --note-date:  #8d9bb3;
+    --editor-surface:     #151b2b;
+    --editor-placeholder: #6d7d95;
+  }
+}
+
+/* অ্যাকসেন্ট — নীল ডিফল্ট; টিল / বেগুনি (লাইট·ডার্ক·সিস্টেম আলাদা) */
+html[data-theme="light"][data-accent="teal"] {
+  --accent: #0f766e;
+  --accent-lt: #14b8a8;
+}
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"][data-accent="teal"] {
+    --accent: #0f766e;
+    --accent-lt: #14b8a8;
+  }
+}
+html[data-theme="dark"][data-accent="teal"] {
+  --accent: #2dd4bf;
+  --accent-lt: #5eead4;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"][data-accent="teal"] {
+    --accent: #2dd4bf;
+    --accent-lt: #5eead4;
+  }
+}
+
+html[data-theme="light"][data-accent="violet"] {
+  --accent: #6d28d9;
+  --accent-lt: #8b5cf6;
+}
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"][data-accent="violet"] {
+    --accent: #6d28d9;
+    --accent-lt: #8b5cf6;
+  }
+}
+html[data-theme="dark"][data-accent="violet"] {
+  --accent: #a78bfa;
+  --accent-lt: #c4b5fd;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"][data-accent="violet"] {
+    --accent: #a78bfa;
+    --accent-lt: #c4b5fd;
+  }
+}
+
+/* নোট এডিটর — কাগজের টোন */
+html[data-theme="light"][data-editor-paper="cream"] {
+  --editor-surface: #f0e4d8;
+  --editor-placeholder: #9a8a7a;
+}
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"][data-editor-paper="cream"] {
+    --editor-surface: #f0e4d8;
+    --editor-placeholder: #9a8a7a;
+  }
+}
+html[data-theme="dark"][data-editor-paper="cream"] {
+  --editor-surface: #1c1816;
+  --editor-placeholder: #8f8178;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"][data-editor-paper="cream"] {
+    --editor-surface: #1c1816;
+    --editor-placeholder: #8f8178;
+  }
+}
+
+html[data-theme="light"][data-editor-paper="cool"] {
+  --editor-surface: #e8eef6;
+  --editor-placeholder: #8896a8;
+}
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"][data-editor-paper="cool"] {
+    --editor-surface: #e8eef6;
+    --editor-placeholder: #8896a8;
+  }
+}
+html[data-theme="dark"][data-editor-paper="cool"] {
+  --editor-surface: #121820;
+  --editor-placeholder: #5d6b7e;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"][data-editor-paper="cool"] {
+    --editor-surface: #121820;
+    --editor-placeholder: #5d6b7e;
+  }
+}
+
+html[data-theme="light"][data-editor-paper="oled"] {
+  --editor-surface: #f7f7f7;
+  --editor-placeholder: #9aa0a6;
+}
+@media (prefers-color-scheme: light) {
+  html[data-theme="system"][data-editor-paper="oled"] {
+    --editor-surface: #f7f7f7;
+    --editor-placeholder: #9aa0a6;
+  }
+}
+html[data-theme="dark"][data-editor-paper="oled"] {
+  --editor-surface: #000000;
+  --editor-placeholder: #5c6570;
+}
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"][data-editor-paper="oled"] {
+    --editor-surface: #000000;
+    --editor-placeholder: #5c6570;
+  }
 }
 
 html, body {
@@ -175,7 +318,7 @@ body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 10px 0 calc(var(--safe-bottom) + 10px);
+  padding: 4px 0 calc(var(--safe-bottom) + 10px);
   -webkit-overflow-scrolling: touch;
 }
 
@@ -205,67 +348,48 @@ body {
   line-height: 1.6;
 }
 
-/* তালিকার উপর — সর্ট (ডান: হালকা, তালিকার সাথে মানানসই) */
-.list-toolbar {
+/* তালিকা — খোঁজা */
+.list-search-wrap {
   display: flex;
-  justify-content: flex-end;
   align-items: center;
-  padding: 2px 10px 6px;
+  gap: 6px;
+  padding: 6px 12px 8px;
   flex-shrink: 0;
   background: var(--bg);
-  border-bottom: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
-.list-toolbar-left { flex: 1; min-width: 0; }
-.list-sort-btn {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-end;
-  gap: 5px;
-  max-width: 96%;
-  padding: 6px 2px 6px 4px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--hint);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: opacity 0.15s, background 0.15s;
-}
-.list-sort-btn:active {
-  background: rgba(0, 0, 0, 0.04);
-}
-.list-sort-prefix {
-  color: var(--hint);
-  font-weight: 500;
-  flex-shrink: 0;
-}
-.list-sort-mid {
-  color: var(--hint);
-  opacity: 0.4;
-  flex-shrink: 0;
-  user-select: none;
-}
-#list-sort-label {
+.list-search-input {
+  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--card-bg);
   color: var(--text);
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.01em;
 }
-.list-sort-chevron {
+.list-search-input::placeholder {
   color: var(--hint);
-  font-size: 10px;
-  flex-shrink: 0;
-  opacity: 0.55;
-  margin-top: 1px;
-  user-select: none;
+  font-size: 14px;
 }
+.list-search-clear {
+  width: 38px;
+  height: 38px;
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--border) 40%, transparent);
+  color: var(--hint);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.list-search-clear:active {
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--text);
+}
+
 .api-key-form { margin: 0; }
 
 /* ফোল্ডার মুভ শিট — বর্তমান অবস্থান */
@@ -283,70 +407,286 @@ body {
   padding-bottom: 8px;
 }
 
-/* সেটিংস পেজ */
+/* সেটিংস পেজ — ট্যাব; পুরো পেজ স্ক্রল নয়, শুধু সক্রিয় প্যানেল */
 .settings-page {
   flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  padding: 12px 16px calc(var(--safe-bottom) + 24px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: calc(var(--safe-bottom) + 8px);
 }
-.settings-lead {
-  font-size: 14px;
-  line-height: 1.6;
-  color: var(--hint);
-  margin-bottom: 20px;
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 6px 8px 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: var(--bg);
 }
-.settings-section { margin-bottom: 22px; }
-.settings-section-title {
+.settings-tab {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 9px 4px;
+  border: none;
+  border-radius: 12px;
+  font-family: inherit;
   font-size: 12px;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--hint);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 10px;
-  padding-left: 2px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
 }
-.settings-card {
+.settings-tab[aria-selected="true"] {
+  color: var(--text);
+  background: color-mix(in srgb, var(--card-bg) 88%, var(--accent) 12%);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 50%, transparent);
+}
+.settings-tab:active {
+  background: color-mix(in srgb, var(--accent) 10%, var(--card-bg));
+}
+.settings-panels {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.settings-tab-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 10px 12px 4px;
+}
+.settings-tab-panel[hidden] {
+  display: none !important;
+}
+.settings-tab-panel .settings-row {
+  min-height: 52px;
+  padding: 9px 12px;
+}
+.settings-group {
   background: var(--card-bg);
-  border-radius: 14px;
-  padding: 14px 16px 16px;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  border: 1px solid rgba(0,0,0,0.04);
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.05);
+  border: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
 }
-.settings-card--muted { opacity: 0.88; }
-.settings-card-title {
+.settings-row {
+  width: 100%;
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+}
+.settings-row:last-child { border-bottom: none; }
+.settings-row-button { cursor: pointer; }
+.settings-row-button:active {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.settings-row-stack {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 9px;
+}
+.settings-row-main {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+.settings-icon {
+  width: 31px;
+  height: 31px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  font-size: 13px;
+  font-weight: 800;
+}
+.settings-row-title {
   font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 4px;
+  margin-bottom: 1px;
 }
-.settings-card-desc {
-  font-size: 13px;
-  line-height: 1.5;
+.settings-row-sub {
+  font-size: 12px;
+  line-height: 1.35;
   color: var(--hint);
-  margin: 0 0 6px 0;
+  margin: 0;
 }
-.settings-row-btns {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-}
-.settings-row-btns .modal-btn-primary,
-.settings-row-btns .modal-btn-secondary { flex: 1; min-width: 120px; }
-.settings-ideas {
-  font-size: 14px;
-  line-height: 1.7;
-  color: var(--text);
-  margin: 0 0 0 18px;
-  padding: 12px 14px 14px 18px;
-  background: var(--card-bg);
+.segmented-control {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 4px;
+  background: color-mix(in srgb, var(--border) 38%, transparent);
   border-radius: 12px;
-  border: 1px dashed var(--border);
+  padding: 3px;
 }
-.settings-ideas li { margin-bottom: 4px; }
+.segmented-control-compact {
+  width: 100%;
+}
+.segmented-control[data-setting="editorPaper"] button {
+  font-size: 11px;
+  padding: 6px 3px;
+}
+.segmented-control button,
+.settings-list-options button {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--hint);
+  background: transparent;
+  border-radius: 9px;
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.segmented-control button.active,
+.settings-list-options button.active {
+  color: var(--text);
+  background: var(--card-bg);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.09);
+}
+.settings-list-options {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  background: color-mix(in srgb, var(--border) 38%, transparent);
+  border-radius: 12px;
+  padding: 3px;
+}
+.settings-switch {
+  position: relative;
+  display: inline-flex;
+  width: 50px;
+  height: 30px;
+  flex-shrink: 0;
+}
+.settings-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.settings-switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, var(--hint));
+  transition: background 0.18s;
+}
+.settings-switch span::before {
+  content: '';
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  left: 3px;
+  top: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+  transition: transform 0.18s;
+}
+.settings-switch input:checked + span {
+  background: var(--accent);
+}
+.settings-switch input:checked + span::before {
+  transform: translateX(20px);
+}
+.settings-status-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.settings-status-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  margin-top: 5px;
+  background: #4caf7d;
+  box-shadow: 0 0 0 5px rgba(76,175,125,0.12);
+  flex-shrink: 0;
+}
+.settings-chevron {
+  color: var(--hint);
+  font-size: 25px;
+  line-height: 1;
+  padding-left: 4px;
+}
+.settings-row-muted {
+  opacity: 0.58;
+}
 #settings-page .key-status { margin-top: 8px; }
+
+.tags-modal-hint {
+  font-size: 13px;
+  color: var(--hint);
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.label-modal-body {
+  padding-bottom: 8px;
+}
+.label-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+.label-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+html[data-font-size="small"] #note-textarea { font-size: 15px; }
+html[data-font-size="medium"] #note-textarea { font-size: 16px; }
+html[data-font-size="large"] #note-textarea { font-size: 18px; }
+
+html[data-line-height="compact"] #note-textarea { line-height: 1.45; }
+html[data-line-height="relaxed"] #note-textarea { line-height: 2.05; }
+
+html[data-editor-width="balanced"] #note-textarea {
+  max-width: 640px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+html[data-editor-width="narrow"] #note-textarea {
+  max-width: 480px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+}
+html[data-list-density="compact"] .note-card-preview { display: none; }
+html[data-list-density="compact"] .note-card-body { padding-top: 11px; padding-bottom: 11px; }
+html[data-list-density="detailed"] .note-card-preview {
+  white-space: normal;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
 
 /* নোট কার্ড */
 .note-card {
@@ -380,6 +720,11 @@ body {
   min-width: 0;
 }
 
+.note-card-pin {
+  margin-right: 4px;
+  font-size: 13px;
+  vertical-align: middle;
+}
 .note-card-title {
   font-size: 15px;
   font-weight: 600;
@@ -388,6 +733,27 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.note-card-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-bottom: 5px;
+}
+.note-card-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  padding: 2px 7px;
+  border-radius: 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.note-card--pinned {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent), 0 2px 10px rgba(0,0,0,0.06);
 }
 
 .note-card-date {
@@ -490,16 +856,6 @@ body {
   padding-left: 17px;
 }
 
-/* সেকশন ডিভাইডার */
-.list-section-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--hint);
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  padding: 14px 16px 6px;
-}
-
 /* ═══ এডিটর ═══ */
 #editor-content {
   flex: 1;
@@ -513,7 +869,7 @@ body {
   resize: none;
   border: none;
   outline: none;
-  background: #fefdf8;
+  background: var(--editor-surface);
   color: var(--text);
   font-family: 'Noto Sans Bengali', 'Inter', system-ui, sans-serif;
   font-size: 16px;
@@ -527,7 +883,7 @@ body {
 }
 
 #note-textarea::placeholder {
-  color: #b8b0a8;
+  color: var(--editor-placeholder);
   font-size: 15px;
 }
 
@@ -801,7 +1157,7 @@ body {
 .editor-folder-chip:active { background: rgba(74, 144, 217, 0.18); }
 .editor-folder-chip.has-folder { color: var(--accent); }
 
-/* ═══ ফোল্ডার কার্ড ═══ */
+/* ═══ ফোল্ডার কার্ড ═══ (লেবেল রঙ শুধু আইকন fill — কার্ড এক রকম) */
 .folder-card {
   display: flex;
   align-items: center;
@@ -870,14 +1226,14 @@ body {
 
 .folder-options-btn:active { color: var(--accent); }
 
-/* সেকশন লেবেল */
+/* সেকশন লেবেল (ফোল্ডার / নোট — টুলবারের ঠিক নিচে, অতিরিক্ত ফাঁক কম) */
 .list-section-label {
   font-size: 11px;
   font-weight: 700;
   color: var(--hint);
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  padding: 14px 16px 7px;
+  padding: 6px 16px 4px;
 }
 
 /* ═══ Action Sheet ═══ */
@@ -932,6 +1288,60 @@ body {
 }
 
 .action-sheet-cancel:active { background: rgba(255,255,255,0.13); }
+
+/* সর্ট: ফুলস্ক্রিন শিট নয়, আইকনের নিচে ছোট ড্রপডাউন */
+#sort-sheet {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding-top: calc(var(--safe-top) + 68px);
+  padding-right: calc(var(--safe-right) + 12px);
+  pointer-events: auto;
+}
+#sort-sheet .action-sheet-card {
+  width: min(280px, calc(100vw - 24px));
+  border-radius: 18px;
+  padding-bottom: 8px !important;
+  background: var(--card-bg);
+  color: var(--text);
+  box-shadow: 0 14px 40px rgba(0,0,0,0.22);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  animation: sort-pop 0.16s ease-out;
+}
+#sort-sheet .action-sheet-title {
+  color: var(--hint);
+  border-bottom: 1px solid var(--divider);
+  padding: 13px 16px 6px;
+}
+#sort-sheet .sort-sheet-hint {
+  color: var(--hint);
+  border-bottom: 1px solid var(--divider);
+  padding: 0 16px 8px;
+  font-size: 12px;
+}
+#sort-sheet .action-sheet-btn {
+  color: var(--text);
+  border-bottom: 1px solid var(--divider);
+  padding: 12px 16px;
+  font-size: 14px;
+}
+#sort-sheet .action-sheet-btn:active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+#sort-sheet .sort-pick.is-active {
+  color: var(--accent) !important;
+  border-left: 3px solid var(--accent);
+  padding-left: 13px;
+}
+#sort-sheet .action-sheet-cancel {
+  display: none;
+}
+@keyframes sort-pop {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
 
 /* ═══ Move to Folder Sheet ═══ */
 .move-card {

@@ -16,6 +16,17 @@ const SB_URL = 'https://iqjajofqaimnqvrxgdzc.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxamFqb2ZxYWltbnF2cnhnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDM0NzYsImV4cCI6MjA4Njc3OTQ3Nn0.epEV-GGXUsJe-u4Aumx284qGPrCFZcuXFGN9qmtwwbM';
 let sb = null; // Supabase client instance
 
+const NOTE_LABEL_KEYS = ['', 'slate', 'blue', 'green', 'amber', 'rose', 'violet'];
+const NOTE_LABEL_BAR = {
+  '': null,
+  slate: '#64748b',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  amber: '#f59e0b',
+  rose: '#f43f5e',
+  violet: '#8b5cf6',
+};
+
 const TRANSCRIBE_PROMPT =
   'এই অডিওতে বাংলায় কথা বলা হয়েছে।\n' +
   'নির্দেশনা:\n' +
@@ -35,6 +46,17 @@ let pendingFolderId = null; // নতুন নোটের জন্য প্�
 let activeFolderActionId = null; // folder options sheet এর জন্য
 let activeNoteActionId   = null; // note options sheet
 let listSort = 'updated_desc';  // localStorage: vn-list-sort
+let appPrefs = {
+  theme: 'system',
+  fontSize: 'medium',
+  listDensity: 'comfortable',
+  autoSaveDelay: 2000,
+  transcribeAutoSave: true,
+  editorPaper: 'default',
+  accent: 'blue',
+  lineHeight: 'normal',
+  editorWidth: 'full',
+};
 
 let micStream      = null;
 let mediaRecorder  = null;
@@ -63,6 +85,18 @@ const screenSettings      = $('screen-settings');
 const rootHeader          = $('root-header');
 const folderHeader        = $('folder-header');
 const notesList           = $('notes-list');
+const listSearchWrap      = $('list-search-wrap');
+const listSearchInput     = $('list-search-input');
+const listSearchClear     = $('list-search-clear');
+const tagsModal           = $('tags-modal');
+const tagsInput           = $('tags-input');
+const tagsModalClose      = $('tags-modal-close');
+const tagsModalCancel     = $('tags-modal-cancel');
+const tagsModalSave       = $('tags-modal-save');
+const labelModal          = $('label-modal');
+const labelModalClose     = $('label-modal-close');
+const labelModalCancel    = $('label-modal-cancel');
+const labelSwatchRow      = $('label-swatch-row');
 const emptyState          = $('empty-state');
 const emptyIcon           = $('empty-icon');
 const emptyTitle          = $('empty-title');
@@ -105,6 +139,7 @@ const folderFormCancel    = $('folder-form-cancel');
 const folderActionSheet   = $('folder-action-sheet');
 const folderActionTitle   = $('folder-action-title');
 const folderActionRename  = $('folder-action-rename');
+const folderActionLabel   = $('folder-action-label');
 const folderActionDelete  = $('folder-action-delete');
 const folderActionCancel  = $('folder-action-cancel');
 
@@ -117,15 +152,29 @@ const moveCurrentHint     = $('move-sheet-current');
 const sortSheet           = $('sort-sheet');
 const sortSheetClose      = $('sort-sheet-close');
 const listSortBtn         = $('list-sort-btn');
+const folderSortBtn       = $('folder-sort-btn');
 const listSortLabel       = $('list-sort-label');
 const settingsBackBtn     = $('settings-back-btn');
 const settingsSortSummary = $('settings-sort-summary');
+const themeValue          = $('theme-value');
+const fontSizeValue       = $('font-size-value');
+const editorPaperValue    = $('editor-paper-value');
+const accentValue         = $('accent-value');
+const listDensityValue    = $('list-density-value');
+const autoSaveDelayValue  = $('autosave-delay-value');
+const apiKeySummary       = $('api-key-summary');
+const apiKeyRow           = $('api-key-row');
+const apiKeySheet         = $('api-key-sheet');
+const apiKeySheetClose    = $('api-key-sheet-close');
 const noteActionSheet     = $('note-action-sheet');
 const noteActionTitle     = $('note-action-title');
 const noteActionRename    = $('note-action-rename');
 const noteActionMove      = $('note-action-move');
 const noteActionDelete    = $('note-action-delete');
 const noteActionCancel    = $('note-action-cancel');
+const noteActionPin       = $('note-action-pin');
+const noteActionTags      = $('note-action-tags');
+const noteActionLabel     = $('note-action-label');
 const noteFormModal       = $('note-form-modal');
 const noteFormTitle       = $('note-form-title');
 const noteNameInput       = $('note-name-input');
@@ -139,15 +188,60 @@ const toggleEyeBtn        = $('toggle-eye-btn');
 const keyStatus           = $('key-status');
 const resetKeyBtn         = $('reset-key-btn');
 const saveKeyBtn          = $('save-key-btn');
+const transcribeAutoSaveToggle = $('pref-transcribe-autosave');
+const lineHeightValue         = $('line-height-value');
+const editorWidthValue        = $('editor-width-value');
+const backupExportBtn         = $('backup-export-btn');
+const backupImportBtn         = $('backup-import-btn');
+const backupImportInput       = $('backup-import-input');
 
 /* ══════════════════════════════════════════════════
    ডেটা লোড / সেভ (Hybrid: localStorage + Supabase)
 ══════════════════════════════════════════════════ */
 
 /* ── লোকাল ক্যাশ (instant) ─────────────────────── */
+function normalizeNote(raw) {
+  const n = raw && typeof raw === 'object' ? raw : {};
+  let tags = [];
+  if (Array.isArray(n.tags)) {
+    tags = n.tags.map(t => String(t).trim()).filter(Boolean);
+  } else if (typeof n.tags === 'string' && n.tags.trim()) {
+    tags = n.tags.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+  }
+  tags = [...new Set(tags)].slice(0, 5);
+  const lc = NOTE_LABEL_KEYS.includes(n.labelColor) ? n.labelColor : '';
+  return {
+    ...n,
+    content: typeof n.content === 'string' ? n.content : '',
+    title: typeof n.title === 'string' ? n.title : '',
+    titleCustom: n.titleCustom === true,
+    folderId: n.folderId == null || n.folderId === '' ? null : n.folderId,
+    pinned: n.pinned === true,
+    tags,
+    labelColor: lc,
+  };
+}
+
+function normalizeFolder(raw) {
+  const f = raw && typeof raw === 'object' ? raw : {};
+  const lc = NOTE_LABEL_KEYS.includes(f.labelColor) ? f.labelColor : '';
+  return {
+    ...f,
+    name: typeof f.name === 'string' ? f.name : '',
+    created: f.created || new Date().toISOString(),
+    labelColor: lc,
+  };
+}
+
 function loadLocalCache() {
   try { notes   = JSON.parse(localStorage.getItem('vn-notes')   || '{}'); } catch { notes   = {}; }
   try { folders = JSON.parse(localStorage.getItem('vn-folders') || '{}'); } catch { folders = {}; }
+  for (const id of Object.keys(notes)) {
+    notes[id] = normalizeNote(notes[id]);
+  }
+  for (const id of Object.keys(folders)) {
+    folders[id] = normalizeFolder(folders[id]);
+  }
 }
 
 function saveLocalCache() {
@@ -155,6 +249,101 @@ function saveLocalCache() {
     localStorage.setItem('vn-notes',   JSON.stringify(notes));
     localStorage.setItem('vn-folders', JSON.stringify(folders));
   } catch { showToast('লোকাল স্টোরেজ পূর্ণ!', 'error'); }
+}
+
+const BACKUP_FORMAT_VERSION = 1;
+
+function exportVoiceNotesBackup() {
+  const payload = {
+    vnBackupVersion: BACKUP_FORMAT_VERSION,
+    exportedAt: new Date().toISOString(),
+    notes: { ...notes },
+    folders: { ...folders },
+    listSort,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const a = document.createElement('a');
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  a.download = `voice-notes-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.json`;
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('ব্যাকআপ ডাউনলোড হয়েছে', 'success');
+}
+
+function validateBackupNotes(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  for (const [, n] of Object.entries(obj)) {
+    if (!n || typeof n !== 'object' || typeof n.content !== 'string') return false;
+  }
+  return true;
+}
+
+function validateBackupFolders(obj) {
+  if (!obj || typeof obj !== 'object') return false;
+  for (const [, f] of Object.entries(obj)) {
+    if (!f || typeof f !== 'object' || typeof f.name !== 'string') return false;
+  }
+  return true;
+}
+
+function resetLocalEditorAfterImport() {
+  currentNoteId = null;
+  pendingFolderId = null;
+  if (noteTextarea) noteTextarea.value = '';
+  if (noteTitleDisplay) noteTitleDisplay.textContent = 'নতুন নোট';
+  if (saveStatus) {
+    saveStatus.textContent = '';
+    saveStatus.classList.remove('visible');
+  }
+  if (screenEditor) screenEditor.classList.remove('active');
+  updateEditorFolderChip();
+  resetRecording();
+}
+
+function onBackupImportFile(ev) {
+  const input = ev.target;
+  const f = input.files && input.files[0];
+  input.value = '';
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!validateBackupNotes(data.notes) || !validateBackupFolders(data.folders)) {
+        showToast('ফাইলটা বৈধ ব্যাকআপ নয়', 'error');
+        return;
+      }
+      if (!confirm('বর্তমান সব নোট ও ফোল্ডার মুছে এই ফাইল দিয়ে পূরণ হবে। চালিয়ে যাবেন?')) return;
+      notes = JSON.parse(JSON.stringify(data.notes));
+      folders = JSON.parse(JSON.stringify(data.folders));
+      for (const nid of Object.keys(notes)) {
+        notes[nid] = normalizeNote(notes[nid]);
+      }
+      for (const fid of Object.keys(folders)) {
+        folders[fid] = normalizeFolder(folders[fid]);
+      }
+      if (typeof data.listSort === 'string' && data.listSort) {
+        listSort = data.listSort;
+        try { localStorage.setItem('vn-list-sort', listSort); } catch { /* */ }
+      }
+      saveLocalCache();
+      currentFolderId = null;
+      resetLocalEditorAfterImport();
+      updateListHeader();
+      updateListSortButton();
+      renderNotesList();
+      history.replaceState({
+        screen: (screenSettings && screenSettings.classList.contains('active')) ? 'settings' : 'list',
+      }, '');
+      showToast('ইমপোর্ট সম্পন্ন', 'success');
+    } catch {
+      showToast('JSON পড়তে ব্যর্থ', 'error');
+    }
+  };
+  reader.onerror = () => showToast('ফাইল পড়তে ব্যর্থ', 'error');
+  reader.readAsText(f, 'UTF-8');
 }
 
 /* ── Supabase sync (background) ─────────────────── */
@@ -179,16 +368,29 @@ async function pullFromSupabase() {
   // Cloud data → in-memory
   notes = {};
   for (const n of nd || []) {
-    notes[n.id] = {
+    let tags = [];
+    if (Array.isArray(n.tags)) tags = n.tags.map(t => String(t).trim()).filter(Boolean);
+    else if (n.tags && typeof n.tags === 'string') {
+      try { tags = JSON.parse(n.tags); } catch { tags = []; }
+      if (!Array.isArray(tags)) tags = [];
+    }
+    notes[n.id] = normalizeNote({
       title: n.title, content: n.content,
       folderId: n.folder_id || null,
       created: n.created_at, updated: n.updated_at,
       titleCustom: n.title_is_custom === true,
-    };
+      pinned: n.pinned === true,
+      tags,
+      labelColor: n.label_color || n.labelColor || '',
+    });
   }
   folders = {};
   for (const f of fd || []) {
-    folders[f.id] = { name: f.name, created: f.created_at };
+    folders[f.id] = normalizeFolder({
+      name: f.name,
+      created: f.created_at,
+      labelColor: f.label_color || f.labelColor || '',
+    });
   }
 
   saveLocalCache(); // localStorage-ও আপডেট করো
@@ -209,6 +411,9 @@ function sbUpsertNote(id) {
     folder_id: n.folderId || null,
     created_at: n.created, updated_at: n.updated,
     title_is_custom: n.titleCustom === true,
+    pinned: n.pinned === true,
+    tags: Array.isArray(n.tags) ? n.tags : [],
+    label_color: n.labelColor || '',
   }, { onConflict: 'id' }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert note:', error.message);
   });
@@ -226,6 +431,7 @@ function sbUpsertFolder(id) {
   const f = folders[id];
   sb.from('vn_folders').upsert({
     id, name: f.name, created_at: f.created,
+    label_color: f.labelColor || '',
   }, { onConflict: 'id' }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert folder:', error.message);
   });
@@ -266,6 +472,9 @@ function getEditorDisplayTitle() {
 function sortNoteEntries(entries) {
   const titleOf = n => getListTitle(n);
   return entries.slice().sort(([, a], [, b]) => {
+    const pA = a.pinned ? 1 : 0;
+    const pB = b.pinned ? 1 : 0;
+    if (pB !== pA) return pB - pA;
     const cA = a.created || a.updated, cB = b.created || b.updated;
     switch (listSort) {
       case 'updated_asc':  return a.updated.localeCompare(b.updated);
@@ -293,15 +502,128 @@ function getSortLabel() {
 }
 
 function updateListSortButton() {
+  const sortTitle = 'বর্তমান সর্ট: ' + getSortLabel();
+  if (listSortBtn) listSortBtn.title = sortTitle;
+  if (folderSortBtn) folderSortBtn.title = sortTitle;
   if (listSortLabel) listSortLabel.textContent = getSortLabel();
   if (settingsSortSummary) {
-    settingsSortSummary.textContent = 'বর্তমান: ' + getSortLabel() + ' — তালিকার সর্ট বাটন থেকেও বদলান।';
+    settingsSortSummary.textContent = getSortLabel();
   }
+  syncSettingsControls();
 }
 
 function normFolderId(v) {
   if (v == null || v === '') return null;
   return v;
+}
+
+function loadPrefs() {
+  const get = (key, fallback) => {
+    try { return localStorage.getItem(key) || fallback; } catch { return fallback; }
+  };
+  const paper = get('vn-editor-paper', 'default');
+  const acc = get('vn-accent', 'blue');
+  const lh = get('vn-line-height', 'normal');
+  const ew = get('vn-editor-width', 'full');
+  appPrefs = {
+    theme: get('vn-theme', 'system'),
+    fontSize: get('vn-font-size', 'medium'),
+    listDensity: get('vn-list-density', 'comfortable'),
+    autoSaveDelay: Number(get('vn-autosave-delay', '2000')) || 2000,
+    transcribeAutoSave: get('vn-transcribe-autosave', 'true') !== 'false',
+    editorPaper: ['default', 'cream', 'cool', 'oled'].includes(paper) ? paper : 'default',
+    accent: ['blue', 'teal', 'violet'].includes(acc) ? acc : 'blue',
+    lineHeight: ['compact', 'normal', 'relaxed'].includes(lh) ? lh : 'normal',
+    editorWidth: ['full', 'balanced', 'narrow'].includes(ew) ? ew : 'full',
+  };
+}
+
+function savePref(key, value) {
+  appPrefs[key] = value;
+  const storageMap = {
+    theme: 'vn-theme',
+    fontSize: 'vn-font-size',
+    listDensity: 'vn-list-density',
+    autoSaveDelay: 'vn-autosave-delay',
+    transcribeAutoSave: 'vn-transcribe-autosave',
+    editorPaper: 'vn-editor-paper',
+    accent: 'vn-accent',
+    lineHeight: 'vn-line-height',
+    editorWidth: 'vn-editor-width',
+  };
+  try { localStorage.setItem(storageMap[key], String(value)); } catch { /* */ }
+  applyPrefs();
+  syncSettingsControls();
+}
+
+function applyPrefs() {
+  const root = document.documentElement;
+  root.dataset.theme = appPrefs.theme || 'system';
+  root.dataset.fontSize = appPrefs.fontSize || 'medium';
+  root.dataset.listDensity = appPrefs.listDensity || 'comfortable';
+  if (!appPrefs.accent || appPrefs.accent === 'blue') delete root.dataset.accent;
+  else root.dataset.accent = appPrefs.accent;
+  if (!appPrefs.editorPaper || appPrefs.editorPaper === 'default') delete root.dataset.editorPaper;
+  else root.dataset.editorPaper = appPrefs.editorPaper;
+  if (!appPrefs.lineHeight || appPrefs.lineHeight === 'normal') delete root.dataset.lineHeight;
+  else root.dataset.lineHeight = appPrefs.lineHeight;
+  if (!appPrefs.editorWidth || appPrefs.editorWidth === 'full') delete root.dataset.editorWidth;
+  else root.dataset.editorWidth = appPrefs.editorWidth;
+}
+
+function syncSettingsControls() {
+  document.querySelectorAll('[data-setting]').forEach(group => {
+    const setting = group.dataset.setting;
+    const activeValue = setting === 'defaultSort' ? listSort : String(appPrefs[setting]);
+    group.querySelectorAll('[data-value]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === activeValue);
+      btn.setAttribute('aria-pressed', btn.dataset.value === activeValue ? 'true' : 'false');
+    });
+  });
+  if (transcribeAutoSaveToggle) {
+    transcribeAutoSaveToggle.checked = appPrefs.transcribeAutoSave !== false;
+  }
+  if (themeValue) {
+    themeValue.textContent = ({ system: 'System default', light: 'Light', dark: 'Dark' })[appPrefs.theme] || 'System default';
+  }
+  if (fontSizeValue) {
+    fontSizeValue.textContent = ({ small: 'Small', medium: 'Medium', large: 'Large' })[appPrefs.fontSize] || 'Medium';
+  }
+  if (editorPaperValue) {
+    editorPaperValue.textContent = ({
+      default: 'ডিফল্ট',
+      cream: 'ক্রিম',
+      cool: 'ঠান্ডা ধূসর',
+      oled: 'OLED কালো',
+    })[appPrefs.editorPaper] || 'ডিফল্ট';
+  }
+  if (accentValue) {
+    accentValue.textContent = ({ blue: 'নীল', teal: 'টিল', violet: 'বেগুনি' })[appPrefs.accent] || 'নীল';
+  }
+  if (lineHeightValue) {
+    lineHeightValue.textContent = ({
+      compact: 'কম ফাঁক',
+      normal: 'মাঝারি',
+      relaxed: 'বেশি ফাঁক',
+    })[appPrefs.lineHeight] || 'মাঝারি';
+  }
+  if (editorWidthValue) {
+    editorWidthValue.textContent = ({
+      full: 'পুরো',
+      balanced: 'মাঝখানে',
+      narrow: 'সরু',
+    })[appPrefs.editorWidth] || 'পুরো';
+  }
+  if (listDensityValue) {
+    listDensityValue.textContent = ({ compact: 'Less preview', comfortable: 'Normal preview', detailed: 'More preview' })[appPrefs.listDensity] || 'Normal preview';
+  }
+  if (autoSaveDelayValue) {
+    autoSaveDelayValue.textContent = ((appPrefs.autoSaveDelay || 2000) / 1000) + ' seconds';
+  }
+  if (apiKeySummary) {
+    const saved = localStorage.getItem('vn-api-key');
+    apiKeySummary.textContent = saved && saved !== DEFAULT_API_KEY ? 'Custom key' : 'Default key';
+  }
 }
 
 function fmtDate(iso) {
@@ -336,6 +658,9 @@ function saveCurrentNote(silent = false) {
       title: '', content: '', titleCustom: false,
       created: now, updated: now,
       folderId: pendingFolderId,
+      pinned: false,
+      tags: [],
+      labelColor: '',
     };
     pendingFolderId = null;
     updateEditorFolderChip();
@@ -412,7 +737,128 @@ function showNoteActionSheet(id) {
   if (!notes[id] || !notes[id].content?.trim()) return;
   activeNoteActionId   = id;
   noteActionTitle.textContent = getListTitle(notes[id]);
+  if (noteActionPin) {
+    noteActionPin.textContent = notes[id].pinned ? '📌 পিন খুলুন' : '📌 পিন করুন';
+  }
   noteActionSheet.classList.remove('hidden');
+}
+
+function toggleNotePinned(id) {
+  if (!notes[id]) return;
+  notes[id] = { ...notes[id], pinned: !notes[id].pinned, updated: new Date().toISOString() };
+  notes[id] = normalizeNote(notes[id]);
+  persistNotes();
+  sbUpsertNote(id);
+  renderNotesList();
+  showToast(notes[id].pinned ? 'পিন করা হয়েছে' : 'পিন খোলা হয়েছে', 'success');
+}
+
+let tagsModalTargetId = null;
+
+function openTagsModalForNote(id) {
+  if (!notes[id] || !tagsModal || !tagsInput) return;
+  tagsModalTargetId = id;
+  const t = Array.isArray(notes[id].tags) ? notes[id].tags : [];
+  tagsInput.value = t.join(', ');
+  tagsModal.classList.remove('hidden');
+  setTimeout(() => { tagsInput.focus(); tagsInput.select(); }, 200);
+}
+
+function closeTagsModal() {
+  if (tagsModal) tagsModal.classList.add('hidden');
+  tagsModalTargetId = null;
+}
+
+function saveTagsFromModal() {
+  if (!tagsModalTargetId || !notes[tagsModalTargetId]) {
+    closeTagsModal();
+    return;
+  }
+  const raw = (tagsInput && tagsInput.value) || '';
+  const parts = raw.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+  const uniq = [...new Set(parts)].slice(0, 5);
+  const id = tagsModalTargetId;
+  notes[id] = normalizeNote({ ...notes[id], tags: uniq, updated: new Date().toISOString() });
+  persistNotes();
+  sbUpsertNote(id);
+  closeTagsModal();
+  renderNotesList();
+  showToast('ট্যাগ সেভ হয়েছে', 'success');
+}
+
+/** @type {{ kind: 'note'|'folder', id: string } | null} */
+let labelModalContext = null;
+
+function openLabelModalForNote(id) {
+  if (!notes[id] || !labelModal) return;
+  labelModalContext = { kind: 'note', id };
+  labelModal.classList.remove('hidden');
+}
+
+function openLabelModalForFolder(id) {
+  if (!folders[id] || !labelModal) return;
+  labelModalContext = { kind: 'folder', id };
+  labelModal.classList.remove('hidden');
+}
+
+function closeLabelModal() {
+  if (labelModal) labelModal.classList.add('hidden');
+  labelModalContext = null;
+}
+
+function setNoteLabelColor(id, colorKey) {
+  if (!notes[id]) return;
+  const key = NOTE_LABEL_KEYS.includes(colorKey) ? colorKey : '';
+  notes[id] = normalizeNote({ ...notes[id], labelColor: key, updated: new Date().toISOString() });
+  persistNotes();
+  sbUpsertNote(id);
+  closeLabelModal();
+  if (noteActionSheet) noteActionSheet.classList.add('hidden');
+  renderNotesList();
+  showToast(key ? 'লেবেল সেভ হয়েছে' : 'লেবেল সরানো হয়েছে', 'success');
+}
+
+function setFolderLabelColor(id, colorKey) {
+  if (!folders[id]) return;
+  const key = NOTE_LABEL_KEYS.includes(colorKey) ? colorKey : '';
+  folders[id] = normalizeFolder({ ...folders[id], labelColor: key });
+  persistFolders();
+  sbUpsertFolder(id);
+  closeLabelModal();
+  if (folderActionSheet) folderActionSheet.classList.add('hidden');
+  renderNotesList();
+  showToast(key ? 'ফোল্ডারের রং সেভ হয়েছে' : 'রং সরানো হয়েছে', 'success');
+}
+
+function buildLabelSwatches() {
+  if (!labelSwatchRow) return;
+  const specs = [
+    { key: '', label: 'নেই', style: 'background:linear-gradient(135deg,#ccc,#888)' },
+    { key: 'slate', label: '', style: 'background:#64748b' },
+    { key: 'blue', label: '', style: 'background:#3b82f6' },
+    { key: 'green', label: '', style: 'background:#22c55e' },
+    { key: 'amber', label: '', style: 'background:#f59e0b' },
+    { key: 'rose', label: '', style: 'background:#f43f5e' },
+    { key: 'violet', label: '', style: 'background:#8b5cf6' },
+  ];
+  labelSwatchRow.innerHTML = '';
+  for (const s of specs) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'label-swatch';
+    b.dataset.color = s.key;
+    b.title = s.key ? s.key : 'কোনো রঙ নয়';
+    b.setAttribute('aria-label', s.key ? `রঙ ${s.key}` : 'রঙ সরান');
+    b.style.cssText = s.style + ';width:40px;height:40px;border-radius:50%;border:2px solid rgba(0,0,0,0.12);cursor:pointer;flex-shrink:0';
+    if (!s.key) b.textContent = '—';
+    b.addEventListener('click', () => {
+      const ctx = labelModalContext;
+      if (!ctx) return;
+      if (ctx.kind === 'note') setNoteLabelColor(ctx.id, s.key);
+      else setFolderLabelColor(ctx.id, s.key);
+    });
+    labelSwatchRow.appendChild(b);
+  }
 }
 
 /* ══════════════════════════════════════════════════
@@ -421,7 +867,7 @@ function showNoteActionSheet(id) {
 function createFolder(name) {
   const id  = crypto.randomUUID();
   const now = new Date().toISOString();
-  folders[id] = { name: name.trim(), created: now };
+  folders[id] = normalizeFolder({ name: name.trim(), created: now, labelColor: '' });
   persistFolders();
   sbUpsertFolder(id); // Supabase sync
   return id;
@@ -429,7 +875,7 @@ function createFolder(name) {
 
 function renameFolder(id, newName) {
   if (!folders[id]) return;
-  folders[id].name = newName.trim();
+  folders[id] = normalizeFolder({ ...folders[id], name: newName.trim() });
   persistFolders();
   sbUpsertFolder(id); // Supabase sync
 }
@@ -496,34 +942,86 @@ function updateListHeader() {
 /* ══════════════════════════════════════════════════
    নোট লিস্ট রেন্ডার
 ══════════════════════════════════════════════════ */
+function listSearchRaw() {
+  return listSearchInput && listSearchInput.value ? listSearchInput.value : '';
+}
+
+function listSearchTrimLower() {
+  return listSearchRaw().trim().toLowerCase();
+}
+
+function noteMatchesSearch(note, q) {
+  if (!q) return true;
+  try {
+    const t = getListTitle(note).toLowerCase();
+    const c = (note.content || '').toLowerCase();
+    return t.includes(q) || c.includes(q);
+  } catch {
+    return false;
+  }
+}
+
+function updateSearchClearVisibility() {
+  if (!listSearchClear) return;
+  listSearchClear.classList.toggle('hidden', !listSearchRaw().trim());
+}
+
+let _searchDebounce;
+function scheduleListRerender() {
+  clearTimeout(_searchDebounce);
+  _searchDebounce = setTimeout(() => renderNotesList(), 140);
+}
+
 function renderNotesList() {
   notesList.innerHTML = '';
+  updateSearchClearVisibility();
+
+  const q = listSearchTrimLower();
 
   if (currentFolderId) {
-    // ফোল্ডার ভিউ — শুধু এই ফোল্ডারের নোট
-    const items = sortNoteEntries(
-      Object.entries(notes)
-        .filter(([, n]) => n.content.trim() && n.folderId === currentFolderId),
+    const entries = Object.entries(notes).filter(([, n]) =>
+      n.content && n.content.trim() && n.folderId === currentFolderId && noteMatchesSearch(n, q),
     );
+    const items = sortNoteEntries(entries);
 
     if (!items.length) {
-      showEmptyState('📁', 'ফোল্ডারে কোনো নোট নেই', 'উপরে + বাটন চাপুন');
+      if (q) {
+        showEmptyState('🔎', 'কিছু মিলল না', 'অন্য শব্দ দিয়ে খুঁজুন');
+      } else {
+        showEmptyState('📁', 'ফোল্ডারে কোনো নোট নেই', 'উপরে + বাটন চাপুন');
+      }
       return;
     }
     hideEmptyState();
+    if (q) addSectionLabel('খোঁজার ফল');
     for (const [id, note] of items) notesList.appendChild(buildNoteCard(id, note));
     return;
   }
 
-  // রুট ভিউ — ফোল্ডার + আনফাইলড নোট
-  const folderList   = Object.entries(folders).sort(([,a],[,b]) => a.name.localeCompare(b.name));
-  const unfiledNotes = sortNoteEntries(
-    Object.entries(notes)
-      .filter(([, n]) => n.content.trim() && !n.folderId),
+  if (q) {
+    const entries = Object.entries(notes).filter(([, n]) =>
+      n.content && n.content.trim() && noteMatchesSearch(n, q),
+    );
+    const items = sortNoteEntries(entries);
+    if (!items.length) {
+      showEmptyState('🔎', 'কিছু মিলল না', 'অন্য শব্দ দিয়ে খুঁজুন');
+      return;
+    }
+    hideEmptyState();
+    addSectionLabel('খোঁজার ফল');
+    for (const [id, note] of items) notesList.appendChild(buildNoteCard(id, note));
+    return;
+  }
+
+  const folderList = Object.entries(folders).sort(([, a], [, b]) => a.name.localeCompare(b.name));
+  const unfiledAll = sortNoteEntries(
+    Object.entries(notes).filter(([, n]) => n.content.trim() && !n.folderId),
   );
+  const pinnedU = unfiledAll.filter(([, n]) => n.pinned);
+  const restU = unfiledAll.filter(([, n]) => !n.pinned);
 
   const hasFolders = folderList.length > 0;
-  const hasNotes   = unfiledNotes.length > 0;
+  const hasNotes = unfiledAll.length > 0;
 
   if (!hasFolders && !hasNotes) {
     showEmptyState('🎙️', 'কোনো নোট নেই', 'উপরে + বাটন চাপুন\nনতুন নোট তৈরি করতে');
@@ -531,17 +1029,26 @@ function renderNotesList() {
   }
   hideEmptyState();
 
+  if (pinnedU.length) {
+    addSectionLabel('পিন করা');
+    for (const [id, note] of pinnedU) notesList.appendChild(buildNoteCard(id, note));
+  }
+
   if (hasFolders) {
     addSectionLabel('ফোল্ডার');
     for (const [id, folder] of folderList) {
-      const count = Object.values(notes).filter(n => n.folderId===id && n.content.trim()).length;
+      const count = Object.values(notes).filter(n => n.folderId === id && n.content.trim()).length;
       notesList.appendChild(buildFolderCard(id, folder, count));
     }
   }
 
-  if (hasNotes) {
-    if (hasFolders) addSectionLabel('নোট');
-    for (const [id, note] of unfiledNotes) notesList.appendChild(buildNoteCard(id, note));
+  if (restU.length) {
+    if (pinnedU.length) {
+      addSectionLabel('অন্যান্য নোট');
+    } else if (hasFolders) {
+      addSectionLabel('নোট');
+    }
+    for (const [id, note] of restU) notesList.appendChild(buildNoteCard(id, note));
   }
 }
 
@@ -567,12 +1074,14 @@ function addSectionLabel(text) {
 
 /* ── ফোল্ডার কার্ড ─────────────────────────────── */
 function buildFolderCard(id, folder, noteCount) {
+  const iconFill = NOTE_LABEL_BAR[folder.labelColor] || '#4a90d9';
+
   const card = document.createElement('div');
   card.className = 'folder-card';
   card.innerHTML = `
     <div class="folder-card-body">
       <div class="folder-card-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="#4a90d9">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="${iconFill}">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
       </div>
@@ -601,14 +1110,24 @@ function buildNoteCard(id, note) {
   const folderTag = note.folderId && folders[note.folderId]
     ? `<span class="note-folder-tag">📁 ${esc(folders[note.folderId].name)}</span>` : '';
 
+  const barColor = NOTE_LABEL_BAR[note.labelColor];
+  const accentStyle = barColor ? ` style="background:${barColor}"` : '';
+
+  const pinMark = note.pinned ? '<span class="note-card-pin" aria-hidden="true">📌</span>' : '';
+  const tags = Array.isArray(note.tags) ? note.tags : [];
+  const tagsRow = tags.length
+    ? `<div class="note-card-tags-row">${tags.map(t => `<span class="note-card-tag">${esc(t)}</span>`).join('')}</div>`
+    : '';
+
   const card = document.createElement('div');
-  card.className = 'note-card';
+  card.className = 'note-card' + (note.pinned ? ' note-card--pinned' : '');
   const listTitle = getListTitle(note);
   card.innerHTML = `
-    <div class="note-card-accent"></div>
+    <div class="note-card-accent"${accentStyle}></div>
     <div class="note-card-body">
-      <div class="note-card-title">${esc(listTitle)}</div>
+      <div class="note-card-title">${pinMark}${esc(listTitle)}</div>
       <div class="note-card-date">${fmtDate(note.updated)}${folderTag}</div>
+      ${tagsRow}
       ${preview ? `<div class="note-card-preview">${esc(preview)}</div>` : ''}
     </div>
     <button class="note-options-btn" aria-label="অপশন">
@@ -697,6 +1216,12 @@ function showFolderActionSheet(id) {
 on(folderActionRename, 'click', () => {
   if (folderActionSheet) folderActionSheet.classList.add('hidden');
   openFolderFormModal('rename', activeFolderActionId);
+});
+
+on(folderActionLabel, 'click', () => {
+  const id = activeFolderActionId;
+  if (folderActionSheet) folderActionSheet.classList.add('hidden');
+  if (id) openLabelModalForFolder(id);
 });
 
 on(folderActionDelete, 'click', () => {
@@ -863,16 +1388,25 @@ on(moveSheet, 'click', e => { if (e.target === moveSheet) moveSheet.classList.ad
 function closeSortSheet() {
   if (sortSheet) sortSheet.classList.add('hidden');
   if (listSortBtn) listSortBtn.setAttribute('aria-expanded', 'false');
+  if (folderSortBtn) folderSortBtn.setAttribute('aria-expanded', 'false');
 }
-function openSortSheet() {
+function openSortSheet(ev) {
   if (!sortSheet) return;
   document.querySelectorAll('.sort-pick').forEach(b => {
     b.classList.toggle('is-active', b.dataset.sort === listSort);
   });
-  if (listSortBtn) listSortBtn.setAttribute('aria-expanded', 'true');
+  if (listSortBtn) listSortBtn.setAttribute('aria-expanded', 'false');
+  if (folderSortBtn) folderSortBtn.setAttribute('aria-expanded', 'false');
+  const opener = ev && ev.currentTarget;
+  if (opener && (opener === listSortBtn || opener === folderSortBtn)) {
+    opener.setAttribute('aria-expanded', 'true');
+  } else if (listSortBtn) {
+    listSortBtn.setAttribute('aria-expanded', 'true');
+  }
   sortSheet.classList.remove('hidden');
 }
 on(listSortBtn, 'click', openSortSheet);
+on(folderSortBtn, 'click', openSortSheet);
 on(sortSheetClose, 'click', closeSortSheet);
 if (sortSheet) {
   sortSheet.addEventListener('click', e => {
@@ -916,8 +1450,43 @@ on(noteActionDelete, 'click', () => {
   if (noteActionSheet) noteActionSheet.classList.add('hidden');
   if (id) deleteNote(id);
 });
+on(noteActionPin, 'click', () => {
+  const id = activeNoteActionId;
+  if (noteActionSheet) noteActionSheet.classList.add('hidden');
+  if (id) toggleNotePinned(id);
+});
+on(noteActionTags, 'click', () => {
+  const id = activeNoteActionId;
+  if (noteActionSheet) noteActionSheet.classList.add('hidden');
+  if (id) openTagsModalForNote(id);
+});
+on(noteActionLabel, 'click', () => {
+  const id = activeNoteActionId;
+  if (noteActionSheet) noteActionSheet.classList.add('hidden');
+  if (id) openLabelModalForNote(id);
+});
 on(noteActionCancel, 'click',  () => { if (noteActionSheet) noteActionSheet.classList.add('hidden'); });
 on(noteActionSheet, 'click',  e => { if (e.target === noteActionSheet) noteActionSheet.classList.add('hidden'); });
+
+on(listSearchInput, 'input', () => {
+  updateSearchClearVisibility();
+  scheduleListRerender();
+});
+on(listSearchClear, 'click', () => {
+  if (listSearchInput) listSearchInput.value = '';
+  updateSearchClearVisibility();
+  renderNotesList();
+});
+
+on(tagsModalClose, 'click', closeTagsModal);
+on(tagsModalCancel, 'click', closeTagsModal);
+on(tagsModalSave, 'click', saveTagsFromModal);
+on(tagsModal, 'click', e => { if (e.target === tagsModal) closeTagsModal(); });
+on(tagsInput, 'keydown', e => { if (e.key === 'Enter') saveTagsFromModal(); });
+
+on(labelModalClose, 'click', closeLabelModal);
+on(labelModalCancel, 'click', closeLabelModal);
+on(labelModal, 'click', e => { if (e.target === labelModal) closeLabelModal(); });
 
 on(noteTitleDisplay, 'click', () => {
   saveCurrentNote(true);
@@ -1081,7 +1650,7 @@ async function transcribeAndInsert() {
     }
 
     if (noteTitleDisplay) noteTitleDisplay.textContent = getEditorDisplayTitle();
-    saveCurrentNote(true);
+    if (appPrefs.transcribeAutoSave !== false) saveCurrentNote(true);
     audioChunks = []; segmentCount = 0; updateSegmentsUI();
 
   } catch (err) {
@@ -1125,6 +1694,7 @@ function openSettingsPage() {
   if (apiKeyInput) apiKeyInput.value = localStorage.getItem('vn-api-key') || DEFAULT_API_KEY;
   updateKeyStatus();
   updateListSortButton();
+  syncSettingsControls();
   if (screenSettings) {
     screenSettings.classList.add('active');
     history.pushState({ screen: 'settings' }, '');
@@ -1133,6 +1703,69 @@ function openSettingsPage() {
 
 function closeSettingsPage() {
   if (screenSettings) screenSettings.classList.remove('active');
+}
+
+const SETTINGS_TAB_IDS = ['look', 'list', 'editor', 'data'];
+
+function getSettingsTabNodes() {
+  return {
+    tabs: document.querySelectorAll('.settings-tab[data-settings-tab]'),
+    panels: document.querySelectorAll('.settings-tab-panel[data-settings-tab]'),
+  };
+}
+
+function activateSettingsTab(tabId) {
+  let id = tabId;
+  if (!SETTINGS_TAB_IDS.includes(id)) id = 'look';
+  const { tabs, panels } = getSettingsTabNodes();
+  if (!tabs.length) return;
+  tabs.forEach(t => {
+    const on = t.dataset.settingsTab === id;
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+    t.tabIndex = on ? 0 : -1;
+  });
+  panels.forEach(p => {
+    if (p.dataset.settingsTab === id) p.removeAttribute('hidden');
+    else p.setAttribute('hidden', '');
+  });
+  try { localStorage.setItem('vn-settings-tab', id); } catch { /* */ }
+}
+
+function initSettingsTabs() {
+  const { tabs } = getSettingsTabNodes();
+  if (!tabs.length) return;
+  tabs.forEach(tab => on(tab, 'click', () => activateSettingsTab(tab.dataset.settingsTab)));
+  const page = $('settings-page');
+  on(page, 'keydown', e => {
+    const t = e.target;
+    if (!t || !t.classList || !t.classList.contains('settings-tab')) return;
+    const ix = SETTINGS_TAB_IDS.indexOf(t.dataset.settingsTab);
+    if (ix < 0) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const dir = e.key === 'ArrowRight' ? 1 : -1;
+      const next = SETTINGS_TAB_IDS[(ix + dir + SETTINGS_TAB_IDS.length) % SETTINGS_TAB_IDS.length];
+      activateSettingsTab(next);
+      const nextBtn = [...getSettingsTabNodes().tabs].find(x => x.dataset.settingsTab === next);
+      if (nextBtn) nextBtn.focus();
+    }
+  });
+  let initial = 'look';
+  try {
+    const s = localStorage.getItem('vn-settings-tab');
+    if (s && SETTINGS_TAB_IDS.includes(s)) initial = s;
+  } catch { /* */ }
+  activateSettingsTab(initial);
+}
+
+function openApiKeySheet() {
+  if (apiKeyInput) apiKeyInput.value = localStorage.getItem('vn-api-key') || DEFAULT_API_KEY;
+  updateKeyStatus();
+  if (apiKeySheet) apiKeySheet.classList.remove('hidden');
+}
+
+function closeApiKeySheet() {
+  if (apiKeySheet) apiKeySheet.classList.add('hidden');
 }
 
 function updateKeyStatus() {
@@ -1149,6 +1782,13 @@ function updateKeyStatus() {
 
 on(settingsBtn, 'click', openSettingsPage);
 on(settingsBackBtn, 'click', () => { if (screenSettings?.classList.contains('active')) history.back(); });
+on(apiKeyRow, 'click', openApiKeySheet);
+on(apiKeySheetClose, 'click', closeApiKeySheet);
+on(apiKeySheet, 'click', e => { if (e.target === apiKeySheet) closeApiKeySheet(); });
+
+on(backupExportBtn, 'click', exportVoiceNotesBackup);
+on(backupImportBtn, 'click', () => { if (backupImportInput) backupImportInput.click(); });
+on(backupImportInput, 'change', onBackupImportFile);
 
 on(toggleEyeBtn, 'click', () => {
   if (!apiKeyInput) return;
@@ -1162,7 +1802,9 @@ on(saveKeyBtn, 'click', () => {
   if (!key) { showToast('API Key খালি রাখা যাবে না', 'error'); return; }
   localStorage.setItem('vn-api-key', key);
   updateKeyStatus();
+  syncSettingsControls();
   showToast('✓ API Key স্থায়ীভাবে সেভ হয়েছে', 'success');
+  closeApiKeySheet();
 });
 
 on(resetKeyBtn, 'click', () => {
@@ -1170,7 +1812,35 @@ on(resetKeyBtn, 'click', () => {
   localStorage.removeItem('vn-api-key');
   apiKeyInput.value = DEFAULT_API_KEY;
   updateKeyStatus();
+  syncSettingsControls();
   showToast('ডিফল্ট Key-তে ফেরত গেছে', 'info');
+});
+
+document.querySelectorAll('.segmented-control, .settings-list-options').forEach(group => {
+  on(group, 'click', e => {
+    const btn = e.target.closest('[data-value]');
+    if (!btn || !group.contains(btn)) return;
+    const setting = group.dataset.setting;
+    const value = btn.dataset.value;
+
+    if (setting === 'defaultSort') {
+      listSort = value;
+      try { localStorage.setItem('vn-list-sort', listSort); } catch { /* */ }
+      updateListSortButton();
+      renderNotesList();
+      return;
+    }
+
+    if (setting === 'autoSaveDelay') {
+      savePref(setting, Number(value) || 2000);
+    } else if (setting) {
+      savePref(setting, value);
+    }
+  });
+});
+
+on(transcribeAutoSaveToggle, 'change', () => {
+  savePref('transcribeAutoSave', transcribeAutoSaveToggle.checked);
 });
 
 /* ══════════════════════════════════════════════════
@@ -1208,7 +1878,7 @@ on(cancelReplaceBtn, 'click', () => { clearSelection(); audioChunks=[]; segmentC
 on(noteTextarea, 'input', () => {
   if (noteTitleDisplay) noteTitleDisplay.textContent = getEditorDisplayTitle();
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => saveCurrentNote(true), 1500);
+  autoSaveTimer = setTimeout(() => saveCurrentNote(true), appPrefs.autoSaveDelay || 2000);
 });
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && currentNoteId) saveCurrentNote(true); });
@@ -1231,6 +1901,8 @@ window.addEventListener('popstate', () => {
    শুরু
 ══════════════════════════════════════════════════ */
 // প্রথমে localStorage থেকে instant load → UI দেখাও
+loadPrefs();
+applyPrefs();
 loadLocalCache();
 try {
   const s = localStorage.getItem('vn-list-sort');
@@ -1238,6 +1910,9 @@ try {
 } catch { /* */ }
 updateListHeader();
 updateListSortButton();
+syncSettingsControls();
+initSettingsTabs();
+buildLabelSwatches();
 renderNotesList();
 history.replaceState({ screen: 'list' }, '');
 
