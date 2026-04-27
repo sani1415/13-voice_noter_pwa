@@ -3,11 +3,8 @@
 /* ══════════════════════════════════════════════════
    কনফিগ
 ══════════════════════════════════════════════════ */
-const DEFAULT_API_KEY = 'AIzaSyBx4VM-fLeKI_DWbb1E27EEQUsshLs0Gx4';
-const GEMINI_MODEL    = 'gemini-3.1-flash-lite-preview';
-
-function getApiKey()    { return localStorage.getItem('vn-api-key') || DEFAULT_API_KEY; }
-function getGeminiUrl() { return `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${getApiKey()}`; }
+const TRANSCRIBE_ENDPOINT = '/.netlify/functions/transcribe';
+try { localStorage.removeItem('vn-api-key'); } catch { /* পুরনো leaked key cache থাকলে মুছে দাও */ }
 
 /* ══════════════════════════════════════════════════
    Supabase কনফিগ
@@ -33,14 +30,6 @@ const NOTE_LABEL_BAR = {
   rose: '#f43f5e',
   violet: '#8b5cf6',
 };
-
-const TRANSCRIBE_PROMPT =
-  'এই অডিওতে বাংলায় কথা বলা হয়েছে।\n' +
-  'নির্দেশনা:\n' +
-  '১. হুবহু যা বলা হয়েছে ঠিক তাই বাংলায় লিখবে — একটি শব্দও বাড়াবে না, বাদ দেবে না, পরিবর্তন করবে না।\n' +
-  '২. নিজের পক্ষ থেকে কোনো মন্তব্য, ব্যাখ্যা বা অতিরিক্ত কিছু যোগ করবে না।\n' +
-  '৩. উপযুক্ত জায়গায় দাড়ি (।), কমা (,), প্রশ্নবোধক চিহ্ন (?), বিস্ময়বোধক চিহ্ন (!) যোগ করবে।\n' +
-  '৪. শুধু ট্রান্সক্রিপশনের টেক্সটটুকু দাও, আর কিছু লিখো না।';
 
 /* ══════════════════════════════════════════════════
    অবস্থা
@@ -172,10 +161,6 @@ const editorPaperValue    = $('editor-paper-value');
 const accentValue         = $('accent-value');
 const listDensityValue    = $('list-density-value');
 const autoSaveDelayValue  = $('autosave-delay-value');
-const apiKeySummary       = $('api-key-summary');
-const apiKeyRow           = $('api-key-row');
-const apiKeySheet         = $('api-key-sheet');
-const apiKeySheetClose    = $('api-key-sheet-close');
 const noteActionSheet     = $('note-action-sheet');
 const noteActionTitle     = $('note-action-title');
 const noteActionRename    = $('note-action-rename');
@@ -192,12 +177,6 @@ const noteFormSave        = $('note-form-save');
 const noteFormClose       = $('note-form-close');
 const noteFormCancel      = $('note-form-cancel');
 
-// সেটিংস পেজ (API Key)
-const apiKeyInput         = $('api-key-input');
-const toggleEyeBtn        = $('toggle-eye-btn');
-const keyStatus           = $('key-status');
-const resetKeyBtn         = $('reset-key-btn');
-const saveKeyBtn          = $('save-key-btn');
 const transcribeAutoSaveToggle = $('pref-transcribe-autosave');
 const lineHeightValue         = $('line-height-value');
 const editorWidthValue        = $('editor-width-value');
@@ -973,10 +952,6 @@ function syncSettingsControls() {
   }
   if (autoSaveDelayValue) {
     autoSaveDelayValue.textContent = ((appPrefs.autoSaveDelay || 2000) / 1000) + ' সেকেন্ড';
-  }
-  if (apiKeySummary) {
-    const saved = localStorage.getItem('vn-api-key');
-    apiKeySummary.textContent = saved && saved !== DEFAULT_API_KEY ? 'কাস্টম key' : 'ডিফল্ট key';
   }
 }
 
@@ -1988,12 +1963,12 @@ async function transcribeAndInsert() {
 
     showProcessing(true, `বিশ্লেষণ হচ্ছে… (${(blob.size/1024).toFixed(0)} KB)`);
 
-    const res = await fetch(getGeminiUrl(), {
+    const res = await fetch(TRANSCRIBE_ENDPOINT, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [
-        { inline_data: { mime_type: effectiveMime, data: base64 } },
-        { text: TRANSCRIBE_PROMPT },
-      ]}]}),
+      body: JSON.stringify({
+        audio: base64,
+        mimeType: effectiveMime,
+      }),
     });
 
     if (!res.ok) {
@@ -2002,7 +1977,7 @@ async function transcribeAndInsert() {
     }
 
     const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    const text = data?.text?.trim();
 
     if (!text) { showToast('কিছু শোনা যায়নি — আবার চেষ্টা করুন', 'warning'); return; }
 
@@ -2113,8 +2088,6 @@ function requestPinResetValue(username) {
    সেটিংস পেজ
 ══════════════════════════════════════════════════ */
 function openSettingsPage() {
-  if (apiKeyInput) apiKeyInput.value = localStorage.getItem('vn-api-key') || DEFAULT_API_KEY;
-  updateKeyStatus();
   updateListSortButton();
   syncSettingsControls();
   if (screenSettings) {
@@ -2181,33 +2154,8 @@ function initSettingsTabs() {
   activateSettingsTab(initial);
 }
 
-function openApiKeySheet() {
-  if (apiKeyInput) apiKeyInput.value = localStorage.getItem('vn-api-key') || DEFAULT_API_KEY;
-  updateKeyStatus();
-  if (apiKeySheet) apiKeySheet.classList.remove('hidden');
-}
-
-function closeApiKeySheet() {
-  if (apiKeySheet) apiKeySheet.classList.add('hidden');
-}
-
-function updateKeyStatus() {
-  if (!keyStatus) return;
-  const saved = localStorage.getItem('vn-api-key');
-  if (saved && saved !== DEFAULT_API_KEY) {
-    keyStatus.textContent = '✓ কাস্টম API Key ব্যবহার হচ্ছে';
-    keyStatus.className   = 'key-status using-custom';
-  } else {
-    keyStatus.textContent = 'ডিফল্ট API Key ব্যবহার হচ্ছে';
-    keyStatus.className   = 'key-status using-default';
-  }
-}
-
 on(settingsBtn, 'click', openSettingsPage);
 on(settingsBackBtn, 'click', () => { if (screenSettings?.classList.contains('active')) history.back(); });
-on(apiKeyRow, 'click', openApiKeySheet);
-on(apiKeySheetClose, 'click', closeApiKeySheet);
-on(apiKeySheet, 'click', e => { if (e.target === apiKeySheet) closeApiKeySheet(); });
 
 on(backupExportBtn, 'click', exportVoiceNotesBackup);
 on(backupImportBtn, 'click', () => { if (backupImportInput) backupImportInput.click(); });
@@ -2379,12 +2327,6 @@ on(authPassword, 'keydown', e => {
   if (authSigninBtn) authSigninBtn.click();
 });
 
-on(toggleEyeBtn, 'click', () => {
-  if (!apiKeyInput) return;
-  apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
-  if (toggleEyeBtn) toggleEyeBtn.style.color = apiKeyInput.type === 'text' ? 'var(--accent)' : '';
-});
-
 on(authPinToggle, 'click', () => {
   if (!authPassword) return;
   authPassword.type = authPassword.type === 'password' ? 'text' : 'password';
@@ -2395,26 +2337,6 @@ on(adminNewPinToggle, 'click', () => {
   if (!adminNewPin) return;
   adminNewPin.type = adminNewPin.type === 'password' ? 'text' : 'password';
   if (adminNewPinToggle) adminNewPinToggle.style.color = adminNewPin.type === 'text' ? 'var(--accent)' : '';
-});
-
-on(saveKeyBtn, 'click', () => {
-  if (!apiKeyInput) return;
-  const key = apiKeyInput.value.trim();
-  if (!key) { showToast('API Key খালি রাখা যাবে না', 'error'); return; }
-  localStorage.setItem('vn-api-key', key);
-  updateKeyStatus();
-  syncSettingsControls();
-  showToast('✓ API Key স্থায়ীভাবে সেভ হয়েছে', 'success');
-  closeApiKeySheet();
-});
-
-on(resetKeyBtn, 'click', () => {
-  if (!apiKeyInput) return;
-  localStorage.removeItem('vn-api-key');
-  apiKeyInput.value = DEFAULT_API_KEY;
-  updateKeyStatus();
-  syncSettingsControls();
-  showToast('ডিফল্ট Key-তে ফেরত গেছে', 'info');
 });
 
 document.querySelectorAll('.segmented-control, .settings-list-options').forEach(group => {
@@ -2523,5 +2445,16 @@ void (async () => {
 })();
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.addEventListener('message', event => {
+    if (event.data?.type === 'APP_UPDATED') window.location.reload();
+  });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => reg.update()).catch(console.warn);
+  });
 }

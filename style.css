@@ -322,8 +322,10 @@ html[data-theme="dark"] .vn-credential-wrap {
 }
 .vn-credential-input::placeholder {
   color: var(--editor-placeholder);
-  opacity: 1;
-  font-weight: 500;
+  -webkit-text-fill-color: var(--editor-placeholder);
+  opacity: 0.72;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 .vn-credential-label {
   display: block;
