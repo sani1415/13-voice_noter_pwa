@@ -103,10 +103,12 @@ const emptyHint           = $('empty-hint');
 const newNoteBtn          = $('new-note-btn');
 const newFolderBtn        = $('new-folder-btn');
 const settingsBtn         = $('settings-btn');
+const rootSignOutBtn      = $('root-sign-out-btn');
 const folderBackBtn       = $('folder-back-btn');
 const folderNameDisplay   = $('folder-name-display');
 const renameFolderBtn     = $('rename-folder-btn');
 const newNoteInFolderBtn  = $('new-note-in-folder-btn');
+const folderSignOutBtn    = $('folder-sign-out-btn');
 const backBtn             = $('back-btn');
 const deleteNoteBtn       = $('delete-note-btn');
 const noteTitleDisplay    = $('note-title-display');
@@ -483,6 +485,16 @@ function hideAuthGate() {
   if (mainShell) mainShell.classList.remove('hidden');
 }
 
+function showHomeScreen({ replaceHistory = true } = {}) {
+  if (screenSettings) screenSettings.classList.remove('active');
+  if (screenEditor) screenEditor.classList.remove('active');
+  resetRecording();
+  currentFolderId = null;
+  updateListHeader();
+  renderNotesList();
+  if (replaceHistory) history.replaceState({ screen: 'list' }, '');
+}
+
 function updateCloudSyncSummary() {
   if (!cloudSyncSummary) return;
   cloudSyncSummary.textContent = appUserId ? (appUsername || 'সংযুক্ত') : '—';
@@ -601,7 +613,8 @@ async function enterAppAfterSession() {
   renderNotesList();
   updateCloudSyncSummary();
   if (appIsAdmin) loadAdminUsers();
-  if (appMustChangePin) guidePinChange();
+  showHomeScreen();
+  if (appMustChangePin) showToast('নিরাপত্তার জন্য Settings থেকে পিন বদলে নিন', 'warning');
 }
 
 function guidePinChange() {
@@ -1973,7 +1986,8 @@ async function transcribeAndInsert() {
 
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      throw new Error(e?.error?.message || `HTTP ${res.status}`);
+      const hint = e?.hint ? ` — ${e.hint}` : '';
+      throw new Error((e?.error || `HTTP ${res.status}`) + hint);
     }
 
     const data = await res.json();
@@ -2190,10 +2204,23 @@ on(pinResetInput, 'keydown', e => {
   }
 });
 
-on(authSignOutBtn, 'click', async () => {
+async function confirmAndSignOut() {
+  const ok = await appConfirm({
+    title: 'সাইন আউট করবেন?',
+    message: 'এই ডিভাইসে আপনার সেশন শেষ হবে।',
+    okText: 'সাইন আউট',
+    cancelText: 'থাক',
+    tone: 'danger',
+    icon: '⎋',
+  });
+  if (!ok) return;
   await exitAppSession();
   showToast('সাইন আউট হয়েছে', 'info');
-});
+}
+
+on(authSignOutBtn, 'click', confirmAndSignOut);
+on(rootSignOutBtn, 'click', confirmAndSignOut);
+on(folderSignOutBtn, 'click', confirmAndSignOut);
 
 on(authSigninBtn, 'click', async () => {
   if (!sb) {

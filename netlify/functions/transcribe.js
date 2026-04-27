@@ -21,23 +21,11 @@ function json(statusCode, body, headers = {}) {
 
 function getCorsHeaders(event) {
   const origin = event.headers.origin || event.headers.Origin || '';
-  const host = event.headers.host || event.headers.Host || '';
-  if (!origin || !host) return {};
-
-  try {
-    const originUrl = new URL(origin);
-    if (originUrl.host !== host) return null;
-    return { 'Access-Control-Allow-Origin': origin };
-  } catch {
-    return null;
-  }
+  return origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {};
 }
 
 exports.handler = async event => {
   const corsHeaders = getCorsHeaders(event);
-  if (corsHeaders === null) {
-    return json(403, { error: 'Forbidden origin' });
-  }
 
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -91,6 +79,9 @@ exports.handler = async event => {
   if (!geminiResponse.ok) {
     return json(geminiResponse.status, {
       error: data?.error?.message || `Gemini request failed: HTTP ${geminiResponse.status}`,
+      hint: geminiResponse.status === 403
+        ? 'Check that GEMINI_API_KEY is a valid server-side key with Generative Language API access and no browser-referrer-only restriction.'
+        : undefined,
     }, corsHeaders);
   }
 

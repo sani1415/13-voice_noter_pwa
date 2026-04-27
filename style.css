@@ -475,6 +475,14 @@ html[data-theme="dark"] .auth-sheet-message.auth-sheet-message-error {
   color: #e8eef8;
 }
 
+.header-signout-btn {
+  color: #f1a8a8;
+}
+.header-signout-btn:active {
+  color: #fff1f1;
+  background: rgba(239, 68, 68, 0.18);
+}
+
 .header-icon-btn.delete-btn { color: #6a7a9a; }
 .header-icon-btn.delete-btn:active { color: #e74c3c; background: rgba(231,76,60,0.15); }
 
@@ -2009,5 +2017,312 @@ html[data-list-density="detailed"] .note-card-preview {
     border-radius: 40px;
     overflow: hidden;
     box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08);
+  }
+}
+
+/* ═══ Modern redesign pass: warm notebook glass UI ═══ */
+:root {
+  --bg: #f6efe4;
+  --panel: #182033;
+  --panel-lt: #26324e;
+  --accent: #2f7dd1;
+  --accent-lt: #62a7ea;
+  --text: #231b14;
+  --hint: #8d7e6e;
+  --border: #dfd0bd;
+  --success: #247a55;
+  --success-lt: #31a16f;
+  --rec: #df3f3f;
+  --rec-glow: rgba(223, 63, 63, 0.36);
+  --card-bg: rgba(255, 252, 246, 0.92);
+  --divider: rgba(91, 65, 40, 0.11);
+  --note-date: #a0907f;
+  --editor-surface: #fffaf0;
+  --editor-placeholder: #b9ab9b;
+}
+
+html[data-theme="dark"] {
+  --bg: #0e1421;
+  --panel: #090f1c;
+  --panel-lt: #151f34;
+  --accent: #75b7ff;
+  --accent-lt: #9ed0ff;
+  --text: #f4eadc;
+  --hint: #96a1b5;
+  --border: #2d3950;
+  --card-bg: rgba(22, 30, 48, 0.9);
+  --divider: rgba(255, 255, 255, 0.08);
+  --note-date: #8d9ab0;
+  --editor-surface: #111827;
+  --editor-placeholder: #67758d;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="system"] {
+    --bg: #0e1421;
+    --panel: #090f1c;
+    --panel-lt: #151f34;
+    --accent: #75b7ff;
+    --accent-lt: #9ed0ff;
+    --text: #f4eadc;
+    --hint: #96a1b5;
+    --border: #2d3950;
+    --card-bg: rgba(22, 30, 48, 0.9);
+    --divider: rgba(255, 255, 255, 0.08);
+    --note-date: #8d9ab0;
+    --editor-surface: #111827;
+    --editor-placeholder: #67758d;
+  }
+}
+
+body {
+  font-family: 'Noto Sans Bengali', 'Inter', system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(circle at 12% 6%, rgba(255, 197, 126, 0.32), transparent 34%),
+    radial-gradient(circle at 88% 16%, rgba(95, 163, 232, 0.24), transparent 32%),
+    var(--panel);
+}
+
+#app {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.34), transparent 38%),
+    radial-gradient(circle at top left, rgba(255, 218, 166, 0.48), transparent 34%),
+    var(--bg);
+}
+
+.auth-screen {
+  background:
+    radial-gradient(circle at 24% 14%, rgba(255, 207, 139, 0.56), transparent 34%),
+    radial-gradient(circle at 86% 8%, rgba(88, 155, 222, 0.24), transparent 30%),
+    var(--bg);
+}
+
+.auth-card {
+  padding: 28px 22px 24px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--card-bg) 84%, white 16%);
+  box-shadow: 0 24px 60px rgba(73, 48, 25, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.auth-logo {
+  width: 58px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 20%, white), color-mix(in srgb, var(--accent) 12%, transparent));
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.auth-title {
+  font-size: 1.55rem;
+  letter-spacing: -0.04em;
+}
+
+.auth-lead {
+  color: color-mix(in srgb, var(--hint) 88%, var(--text));
+}
+
+.header {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 36%),
+    linear-gradient(180deg, var(--panel) 0%, #111827 100%);
+  min-height: calc(var(--safe-top) + 64px);
+  padding-bottom: 14px;
+  box-shadow: 0 14px 34px rgba(9, 15, 28, 0.2);
+}
+
+.header-title {
+  font-size: 18px;
+  letter-spacing: -0.03em;
+}
+
+.header-icon-btn {
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.045);
+  color: #b8c3d8;
+  border-radius: 14px;
+}
+
+.header-icon-btn:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.list-search-wrap {
+  padding: 12px 14px 10px;
+  background: transparent;
+  border-bottom: none;
+}
+
+.list-search-input,
+.key-input {
+  border-radius: 16px;
+  border-color: color-mix(in srgb, var(--border) 65%, transparent);
+  background: color-mix(in srgb, var(--card-bg) 86%, white 14%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.notes-list {
+  padding: 4px 0 calc(var(--safe-bottom) + 18px);
+}
+
+.note-card,
+.folder-card,
+.settings-group {
+  border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  background: var(--card-bg);
+  border-radius: 22px;
+  box-shadow: 0 16px 32px rgba(55, 36, 18, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.62);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.note-card,
+.folder-card {
+  margin: 0 14px 10px;
+}
+
+.note-card:active,
+.folder-card:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.note-card-accent {
+  width: 6px;
+  border-radius: 999px;
+  margin: 12px 0 12px 10px;
+}
+
+.note-card-body {
+  padding: 15px 14px;
+}
+
+.note-card-title,
+.folder-card-name {
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.note-card-preview {
+  line-height: 1.5;
+}
+
+.note-options-btn,
+.folder-options-btn {
+  color: color-mix(in srgb, var(--hint) 70%, transparent);
+}
+
+.list-section-label {
+  padding: 10px 18px 7px;
+  color: color-mix(in srgb, var(--hint) 76%, var(--text));
+  letter-spacing: 0.12em;
+}
+
+#note-textarea {
+  margin: 12px 12px 0;
+  border-radius: 24px 24px 0 0;
+  background:
+    linear-gradient(90deg, rgba(223, 208, 189, 0.2) 1px, transparent 1px) 34px 0 / 1px 100% no-repeat,
+    var(--editor-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 10px 28px rgba(72, 48, 24, 0.08);
+  padding: 22px 22px 22px 46px;
+}
+
+#bottom-bar {
+  margin: 0 10px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 46%),
+    color-mix(in srgb, var(--panel) 94%, black);
+  box-shadow: 0 -8px 40px rgba(9, 15, 28, 0.28);
+}
+
+#rec-btn {
+  background: radial-gradient(circle at 35% 26%, var(--accent-lt), var(--accent) 58%, #1d5eaa);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 40%, transparent), inset 0 2px 0 rgba(255, 255, 255, 0.3);
+}
+
+#rec-btn.recording {
+  background: radial-gradient(circle at 35% 26%, #ff8c8c, var(--rec) 58%, #a91919);
+}
+
+#done-btn,
+.modal-btn-primary {
+  border-radius: 16px;
+  background: linear-gradient(145deg, var(--success-lt), var(--success));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--success) 28%, transparent);
+}
+
+.settings-tabs {
+  padding: 12px 10px 10px;
+  background: transparent;
+  border-bottom: none;
+}
+
+.settings-tab {
+  border-radius: 999px;
+}
+
+.settings-tab[aria-selected="true"] {
+  color: white;
+  background: linear-gradient(145deg, var(--accent-lt), var(--accent));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.settings-tab-panel {
+  padding: 10px 12px 12px;
+}
+
+.settings-row {
+  padding: 13px 15px;
+}
+
+.settings-icon,
+.folder-card-icon {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.modal-overlay {
+  background: rgba(12, 16, 26, 0.54);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.modal-card {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 28px 28px 0 0;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.08), transparent 42%),
+    var(--panel-lt);
+  box-shadow: 0 -24px 70px rgba(0, 0, 0, 0.42);
+}
+
+.app-dialog-card,
+.processing-card {
+  border-radius: 28px;
+}
+
+.toast {
+  border-radius: 999px;
+  max-width: calc(100vw - 32px);
+  white-space: normal;
+  text-align: center;
+}
+
+@media (min-width: 480px) {
+  body {
+    background:
+      radial-gradient(circle at 20% 10%, rgba(255, 190, 111, 0.22), transparent 32%),
+      radial-gradient(circle at 82% 18%, rgba(93, 165, 238, 0.18), transparent 34%),
+      #080d17;
+  }
+  #app {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 40px 120px rgba(0,0,0,0.72), 0 0 0 12px rgba(255,255,255,0.025);
   }
 }
