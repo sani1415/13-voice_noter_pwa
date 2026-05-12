@@ -1,3 +1,4 @@
-# Local Netlify folder
+# Local deployment folders and secrets
 .netlify
 .env
+.vercel

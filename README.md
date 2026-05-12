@@ -6,7 +6,7 @@
 
 এই অ্যাপটি মূলত বাংলা ভয়েস নোট ব্যবহারের জন্য তৈরি। ব্যবহারকারী PIN দিয়ে লগইন করে নোট তৈরি করতে পারে, ফোল্ডারে সাজাতে পারে, মাইক্রোফোন দিয়ে কথা বলে অডিও রেকর্ড করতে পারে এবং Gemini AI দিয়ে সেই অডিওকে বাংলা লেখায় রূপান্তর করতে পারে।
 
-অ্যাপটি static frontend হিসেবে চলে, কিন্তু transcription API key নিরাপদ রাখার জন্য Gemini API call সরাসরি browser থেকে করা হয় না। এর বদলে Netlify Function ব্যবহার করা হয়।
+অ্যাপটি static frontend হিসেবে চলে, কিন্তু transcription API key নিরাপদ রাখার জন্য Gemini API call সরাসরি browser থেকে করা হয় না। এর বদলে Vercel Serverless Function ব্যবহার করা হয়।
 
 ## প্রধান ফিচার
 
@@ -24,10 +24,10 @@
 
 - Frontend: plain HTML, CSS, JavaScript
 - PWA: `manifest.json` এবং `sw.js`
-- Backend function: Netlify Functions
+- Backend function: Vercel Serverless Functions
 - AI transcription: Google Gemini Generative Language API
 - Database/sync: Supabase
-- Deployment: Netlify
+- Deployment: Vercel
 
 ## গুরুত্বপূর্ণ ফাইল
 
@@ -36,8 +36,8 @@
 - `app.js` - app state, login, notes, recording, Supabase sync, UI behavior
 - `sw.js` - service worker cache এবং app update behavior
 - `manifest.json` - PWA metadata
-- `netlify/functions/transcribe.js` - server-side Gemini transcription endpoint
-- `netlify.toml` - Netlify publish এবং functions config
+- `api/transcribe.js` - server-side Gemini transcription endpoint
+- `vercel.json` - Vercel headers config
 - `supabase_setup.sql` - basic Supabase notes/folders setup SQL
 - `supabase/migrations/` - custom app users, PIN login, session, RPC এবং secured data access migrations
 
@@ -47,35 +47,36 @@
 2. Login session localStorage-এ session token হিসেবে রাখা হয়।
 3. Supabase RPC ব্যবহার করে user session resolve, notes pull এবং notes/folders sync হয়।
 4. রেকর্ডিং browser `MediaRecorder` দিয়ে নেওয়া হয়।
-5. Audio base64 হিসেবে `/.netlify/functions/transcribe` endpoint-এ পাঠানো হয়।
-6. Netlify Function server-side থেকে Gemini API call করে transcription text ফেরত দেয়।
+5. Audio base64 হিসেবে `/api/transcribe` endpoint-এ পাঠানো হয়।
+6. Vercel Function server-side থেকে Gemini API call করে transcription text ফেরত দেয়।
 7. Transcribed text note editor-এ insert হয় এবং setting অনুযায়ী auto-save হয়।
 
 ## Deployment
 
-এই project Netlify-তে deploy করার জন্য তৈরি।
+এই project Vercel-এ deploy করার জন্য তৈরি।
 
-`netlify.toml` অনুযায়ী:
+Vercel static files root folder থেকেই serve করবে, আর `api/transcribe.js` serverless function হিসেবে deploy হবে। `vercel.json`-এ service worker এবং index page-এর no-cache header রাখা হয়েছে।
 
-```toml
-[build]
-  publish = "."
-  functions = "netlify/functions"
+CLI দিয়ে deploy করতে:
+
+```bash
+npm install -g vercel
+vercel
+vercel --prod
 ```
 
-Static files root folder থেকেই serve হয়, আর functions থাকে `netlify/functions` folder-এ।
+Vercel dashboard দিয়ে deploy করতে:
 
-Production URL:
-
-```text
-https://afkaar.netlify.app
-```
-
-Netlify Drop দিয়ে শুধু static files upload করলে transcription function কাজ করবে না। Functions সহ deploy করার জন্য Netlify Git deploy বা Netlify CLI ব্যবহার করা উচিত।
+1. নতুন Vercel project তৈরি করুন।
+2. এই repository/project folder import করুন।
+3. Framework Preset হিসেবে `Other` বা static project রাখুন।
+4. Build command খালি রাখুন।
+5. Output directory খালি রাখুন বা `.` ব্যবহার করুন।
+6. Production deploy করার আগে Environment Variables সেট করুন।
 
 ## Environment Variables
 
-Netlify dashboard বা local `.env`-এ নিচের variable দরকার:
+Vercel dashboard-এর Project Settings → Environment Variables-এ নিচের variable দরকার:
 
 ```env
 GEMINI_API_KEY=your_server_side_gemini_api_key
@@ -89,26 +90,34 @@ GEMINI_MODEL=gemini-2.5-flash
 
 `GEMINI_MODEL` না দিলে default model হিসেবে `gemini-2.5-flash` ব্যবহার হয়।
 
-Security note: Gemini API key frontend code-এ hardcode করা যাবে না। এই app এখন key শুধু Netlify Function-এর server-side environment থেকে নেয়।
+API key change করতে Vercel dashboard-এ `GEMINI_API_KEY` update করে production redeploy করুন। CLI দিয়ে:
+
+```bash
+vercel env rm GEMINI_API_KEY production
+vercel env add GEMINI_API_KEY production
+vercel --prod
+```
+
+Security note: Gemini API key frontend code-এ hardcode করা যাবে না। এই app এখন key শুধু Vercel Function-এর server-side environment থেকে নেয়।
 
 ## Local Development
 
-সাধারণ `file://` বা VS Code Live Server দিয়ে app খুললে PWA manifest, service worker এবং Netlify Function ঠিকমতো কাজ করবে না।
+সাধারণ `file://` বা VS Code Live Server দিয়ে app খুললে PWA manifest, service worker এবং Vercel Function ঠিকমতো কাজ করবে না।
 
-Netlify Functions সহ local test করতে:
+Vercel Function সহ local test করতে:
 
-```powershell
-npm install -g netlify-cli
-netlify dev
+```bash
+npm install -g vercel
+vercel dev
 ```
 
 তারপর browser-এ খুলুন:
 
 ```text
-http://localhost:8888
+http://localhost:3000
 ```
 
-যদি `127.0.0.1:5500` বা `file://` দিয়ে চালানো হয়, transcription endpoint ভুল হবে এবং `/.netlify/functions/transcribe` কাজ করবে না।
+যদি `127.0.0.1:5500` বা `file://` দিয়ে চালানো হয়, transcription endpoint ভুল হবে এবং `/api/transcribe` function কাজ করবে না।
 
 ## Supabase
 
@@ -119,8 +128,8 @@ http://localhost:8888
 ## নিরাপত্তা নোট
 
 - Gemini API key কখনো `app.js` বা frontend-এ রাখা যাবে না।
-- Netlify Environment Variable-এ `GEMINI_API_KEY` রাখতে হবে।
-- Google API key browser referrer-only restricted হলে Netlify Function থেকে 403 দিতে পারে।
+- Vercel Environment Variable-এ `GEMINI_API_KEY` রাখতে হবে।
+- Google API key browser referrer-only restricted হলে Vercel Function থেকে 403 দিতে পারে।
 - Supabase service role key frontend-এ রাখা যাবে না।
 - Supabase tables exposed হলে RLS enabled থাকা জরুরি।
 
@@ -130,18 +139,18 @@ http://localhost:8888
 
 App `file://` দিয়ে খোলা হলে service worker কাজ করে না। `http://localhost:8888` বা deployed URL ব্যবহার করুন।
 
-### `POST /.netlify/functions/transcribe 405`
+### `POST /api/transcribe 405`
 
-App static server দিয়ে চলছে, Netlify Functions চলছে না। `netlify dev` ব্যবহার করুন।
+App static server দিয়ে চলছে, Vercel Function চলছে না। `vercel dev` ব্যবহার করুন।
 
-### `POST /.netlify/functions/transcribe 403`
+### `POST /api/transcribe 403`
 
 সম্ভবত Gemini API key invalid, restricted, বা Generative Language API access নেই। server-side compatible key ব্যবহার করুন।
 
 ### `Missing GEMINI_API_KEY`
 
-Netlify environment variable সেট করা হয়নি।
+Vercel environment variable সেট করা হয়নি।
 
 ## বর্তমান অবস্থা
 
-অ্যাপটি mobile-first PWA হিসেবে তৈরি এবং Netlify deployment-এর জন্য configured. Transcription flow server-side Netlify Function দিয়ে secure করা হয়েছে, Supabase cloud sync যুক্ত আছে, এবং UI modern warm notebook style-এ redesign করা হয়েছে।
+অ্যাপটি mobile-first PWA হিসেবে তৈরি এবং Vercel deployment-এর জন্য configured. Transcription flow server-side Vercel Function দিয়ে secure করা হয়েছে, Supabase cloud sync যুক্ত আছে, এবং UI modern warm notebook style-এ redesign করা হয়েছে।

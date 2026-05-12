@@ -1,5 +1,5 @@
 /* Service Worker - Voice Notes PWA */
-const CACHE = 'voice-notes-v2';
+const CACHE = 'voice-notes-v3';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -25,7 +25,7 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/.netlify/functions/')) return;
+  if (url.pathname.startsWith('/api/')) return;
 
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);

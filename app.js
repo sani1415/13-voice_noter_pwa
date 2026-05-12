@@ -3,7 +3,7 @@
 /* ══════════════════════════════════════════════════
    কনফিগ
 ══════════════════════════════════════════════════ */
-const TRANSCRIBE_ENDPOINT = '/.netlify/functions/transcribe';
+const TRANSCRIBE_ENDPOINT = '/api/transcribe';
 try { localStorage.removeItem('vn-api-key'); } catch { /* পুরনো leaked key cache থাকলে মুছে দাও */ }
 
 /* ══════════════════════════════════════════════════

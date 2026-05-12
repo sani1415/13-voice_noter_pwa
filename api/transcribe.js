@@ -32,57 +32,64 @@ function cleanTranscript(text) {
   return value;
 }
 
-function json(statusCode, body, headers = {}) {
-  return {
-    statusCode,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      ...headers,
-    },
-    body: JSON.stringify(body),
-  };
+function sendJson(res, statusCode, body) {
+  res.statusCode = statusCode;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end(JSON.stringify(body));
 }
 
-function getCorsHeaders(event) {
-  const origin = event.headers.origin || event.headers.Origin || '';
-  return origin ? { 'Access-Control-Allow-Origin': origin, Vary: 'Origin' } : {};
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin || '';
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
 }
 
-exports.handler = async event => {
-  const corsHeaders = getCorsHeaders(event);
+async function readJsonBody(req) {
+  if (req.body && typeof req.body === 'object') return req.body;
+  if (typeof req.body === 'string') return JSON.parse(req.body || '{}');
 
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers: {
-        ...corsHeaders,
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      },
-      body: '',
-    };
+  let raw = '';
+  for await (const chunk of req) raw += chunk;
+  return JSON.parse(raw || '{}');
+}
+
+module.exports = async function handler(req, res) {
+  setCorsHeaders(req, res);
+
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.end('');
+    return;
   }
 
-  if (event.httpMethod !== 'POST') {
-    return json(405, { error: 'Method not allowed' }, corsHeaders);
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
   }
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) {
-    return json(500, { error: 'Missing GEMINI_API_KEY environment variable' }, corsHeaders);
+    sendJson(res, 500, { error: 'Missing GEMINI_API_KEY environment variable' });
+    return;
   }
 
   let payload;
   try {
-    payload = JSON.parse(event.body || '{}');
+    payload = await readJsonBody(req);
   } catch {
-    return json(400, { error: 'Invalid JSON body' }, corsHeaders);
+    sendJson(res, 400, { error: 'Invalid JSON body' });
+    return;
   }
 
   const audio = typeof payload.audio === 'string' ? payload.audio : '';
   const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType : 'audio/webm';
   if (!audio) {
-    return json(400, { error: 'Audio is required' }, corsHeaders);
+    sendJson(res, 400, { error: 'Audio is required' });
+    return;
   }
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
@@ -104,14 +111,15 @@ exports.handler = async event => {
 
   const data = await geminiResponse.json().catch(() => ({}));
   if (!geminiResponse.ok) {
-    return json(geminiResponse.status, {
+    sendJson(res, geminiResponse.status, {
       error: data?.error?.message || `Gemini request failed: HTTP ${geminiResponse.status}`,
       hint: geminiResponse.status === 403
         ? 'Check that GEMINI_API_KEY is a valid server-side key with Generative Language API access and no browser-referrer-only restriction.'
         : undefined,
-    }, corsHeaders);
+    });
+    return;
   }
 
   const text = cleanTranscript(data?.candidates?.[0]?.content?.parts?.[0]?.text);
-  return json(200, { text }, corsHeaders);
+  sendJson(res, 200, { text });
 };
