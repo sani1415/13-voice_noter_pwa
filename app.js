@@ -2524,9 +2524,11 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && cur
 function syncVisualViewportHeight() {
   const vv = window.visualViewport;
   const height = vv ? vv.height : window.innerHeight;
+  const top = vv ? vv.offsetTop : 0;
+  document.documentElement.style.setProperty('--app-top', `${Math.round(top)}px`);
   document.documentElement.style.setProperty('--app-height', `${Math.round(height)}px`);
 
-  const keyboardInset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  const keyboardInset = vv ? Math.max(0, window.innerHeight - vv.height - top) : 0;
   document.documentElement.classList.toggle('keyboard-open', keyboardInset > 120);
 }
 
