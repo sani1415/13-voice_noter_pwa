@@ -1300,6 +1300,16 @@ html[data-list-density="detailed"] .note-card-preview {
   align-items: center;
 }
 
+.rec-center {
+  flex: 1.1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.rec-left { justify-content: flex-start; }
 .rec-right { justify-content: flex-end; }
 
 /* রেকর্ড টাইমার */
@@ -1312,7 +1322,8 @@ html[data-list-density="detailed"] .note-card-preview {
 }
 
 /* বড় মাইক বাটন */
-#rec-btn {
+#rec-btn,
+#instant-transcribe-btn {
   width: 78px;
   height: 78px;
   border-radius: 50%;
@@ -1330,6 +1341,13 @@ html[data-list-density="detailed"] .note-card-preview {
     0 2px 8px rgba(0,0,0,0.2);
 }
 
+#instant-transcribe-btn {
+  width: 66px;
+  height: 66px;
+  color: white;
+  background: var(--success);
+}
+
 .rec-ring {
   position: absolute;
   inset: -8px;
@@ -1339,14 +1357,16 @@ html[data-list-density="detailed"] .note-card-preview {
   pointer-events: none;
 }
 
-#rec-btn.recording {
+#rec-btn.recording,
+#instant-transcribe-btn.recording {
   background: var(--rec);
   box-shadow:
     0 6px 28px var(--rec-glow),
     0 2px 8px rgba(0,0,0,0.2);
 }
 
-#rec-btn.recording .rec-ring {
+#rec-btn.recording .rec-ring,
+#instant-transcribe-btn.recording .rec-ring {
   border-color: rgba(214, 48, 49, 0.4);
   animation: ring-pulse 1.4s ease-out infinite;
 }
@@ -1356,8 +1376,10 @@ html[data-list-density="detailed"] .note-card-preview {
   100% { inset: -20px; opacity: 0; }
 }
 
-#rec-btn:active { transform: scale(0.91); }
-#rec-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+#rec-btn:active,
+#instant-transcribe-btn:active { transform: scale(0.91); }
+#rec-btn:disabled,
+#instant-transcribe-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
 
 /* DONE বাটন */
 #done-btn {
@@ -2222,13 +2244,11 @@ body {
 }
 
 #note-textarea {
-  margin: 12px 12px 0;
-  border-radius: 24px 24px 0 0;
-  background:
-    linear-gradient(90deg, rgba(223, 208, 189, 0.2) 1px, transparent 1px) 34px 0 / 1px 100% no-repeat,
-    var(--editor-surface);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 10px 28px rgba(72, 48, 24, 0.08);
-  padding: 22px 22px 22px 46px;
+  margin: 4px 4px 0;
+  border-radius: 18px 18px 0 0;
+  background: var(--editor-surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  padding: 14px 14px 16px;
 }
 
 #bottom-bar {
@@ -2246,7 +2266,13 @@ body {
   box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 40%, transparent), inset 0 2px 0 rgba(255, 255, 255, 0.3);
 }
 
-#rec-btn.recording {
+#instant-transcribe-btn {
+  background: radial-gradient(circle at 35% 26%, var(--success-lt), var(--success) 58%, #17613f);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--success) 38%, transparent), inset 0 2px 0 rgba(255, 255, 255, 0.25);
+}
+
+#rec-btn.recording,
+#instant-transcribe-btn.recording {
   background: radial-gradient(circle at 35% 26%, #ff8c8c, var(--rec) 58%, #a91919);
 }
 

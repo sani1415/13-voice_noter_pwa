@@ -63,6 +63,9 @@ let audioChunks    = [];
 let segmentCount   = 0;
 let isRecording    = false;
 let isProcessing   = false;
+let instantRecording = false;
+let recordingStartedAt = 0;
+let recordingMode = '';
 let mimeType       = '';
 let timerInterval  = null;
 let timerSeconds   = 0;
@@ -120,6 +123,7 @@ const segmentsDots        = $('segments-dots');
 const segmentsText        = $('segments-text');
 const clearRecBtn         = $('clear-rec-btn');
 const recBtn              = $('rec-btn');
+const instantTranscribeBtn = $('instant-transcribe-btn');
 const doneBtn             = $('done-btn');
 const recTimer            = $('rec-timer');
 const replaceBanner       = $('replace-banner');
@@ -1886,20 +1890,64 @@ async function toggleRecording() {
   } else {
     if (segmentCount === 0) captureSelection();
     const ok = await ensureMic();
-    if (ok) startSegment();
+    if (ok) startSegment('manual');
   }
 }
 
-function startSegment() {
+function startSegment(mode = 'manual') {
   const opts = mimeType ? { mimeType } : {};
   mediaRecorder = new MediaRecorder(micStream, opts);
   mediaRecorder.ondataavailable = e => { if (e.data && e.data.size > 0) audioChunks.push(e.data); };
   mediaRecorder.start(100);
   isRecording = true;
-  recBtn.classList.add('recording');
+  recordingMode = mode;
+  recordingStartedAt = Date.now();
+  recBtn.classList.toggle('recording', mode === 'manual');
+  if (instantTranscribeBtn) instantTranscribeBtn.classList.toggle('recording', mode === 'instant');
   segmentsText.textContent = 'রেকর্ড হচ্ছে…';
   recTimer.classList.remove('hidden');
   startTimer();
+}
+
+async function toggleInstantTranscribe() {
+  if (isProcessing) return;
+  if (isRecording) {
+    if (!instantRecording) {
+      showToast('আগে চলমান রেকর্ডিং বন্ধ করুন', 'warning');
+      return;
+    }
+    if (Date.now() - recordingStartedAt < 700) {
+      mediaRecorder.onstop = () => {
+        isRecording = false;
+        instantRecording = false;
+        recordingMode = '';
+        recordingStartedAt = 0;
+        audioChunks = [];
+        segmentCount = 0;
+        stopTimer();
+        recBtn.classList.remove('recording');
+        if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+        updateSegmentsUI();
+        showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
+      };
+      try { mediaRecorder.stop(); } catch {}
+      return;
+    }
+    instantRecording = false;
+    if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+    await onDone();
+    return;
+  }
+
+  audioChunks = [];
+  segmentCount = 0;
+  updateSegmentsUI();
+  captureSelection();
+  const ok = await ensureMic();
+  if (!ok) return;
+  instantRecording = true;
+  startSegment('instant');
+  segmentsText.textContent = 'রেকর্ড হচ্ছে… আবার চাপলে ট্রান্সক্রাইব হবে';
 }
 
 function stopSegment() {
@@ -1907,8 +1955,12 @@ function stopSegment() {
   mediaRecorder.onstop = () => {
     isRecording  = false;
     segmentCount += 1;
+    recordingMode = '';
+    recordingStartedAt = 0;
     stopTimer();
     recBtn.classList.remove('recording');
+    instantRecording = false;
+    if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
     updateSegmentsUI();
   };
   mediaRecorder.stop();
@@ -1931,8 +1983,12 @@ function updateSegmentsUI() {
 function resetRecording() {
   if (isRecording && mediaRecorder) { mediaRecorder.onstop = null; try { mediaRecorder.stop(); } catch {} }
   isRecording = false; audioChunks = []; segmentCount = 0;
+  instantRecording = false;
+  recordingMode = '';
+  recordingStartedAt = 0;
   stopTimer();
   recBtn.classList.remove('recording');
+  if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
   recTimer.classList.add('hidden');
   updateSegmentsUI();
   clearSelection();
@@ -1957,7 +2013,17 @@ async function onDone() {
 
   if (isRecording) {
     await new Promise(resolve => {
-      mediaRecorder.onstop = () => { isRecording = false; segmentCount++; stopTimer(); recBtn.classList.remove('recording'); resolve(); };
+      mediaRecorder.onstop = () => {
+        isRecording = false;
+        segmentCount++;
+        instantRecording = false;
+        recordingMode = '';
+        recordingStartedAt = 0;
+        stopTimer();
+        recBtn.classList.remove('recording');
+        if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+        resolve();
+      };
       mediaRecorder.stop();
     });
   }
@@ -1966,12 +2032,20 @@ async function onDone() {
 }
 
 async function transcribeAndInsert() {
-  isProcessing = true; recBtn.disabled = true; doneBtn.disabled = true;
+  isProcessing = true;
+  recBtn.disabled = true;
+  doneBtn.disabled = true;
+  if (instantTranscribeBtn) instantTranscribeBtn.disabled = true;
   showProcessing(true, 'AI শুনছে…');
 
   try {
     const effectiveMime = mimeType || 'audio/webm';
     const blob   = new Blob(audioChunks, { type: effectiveMime });
+    if (blob.size < 1200) {
+      showToast('কোনো স্পষ্ট কথা শোনা যায়নি', 'warning');
+      audioChunks = []; segmentCount = 0; updateSegmentsUI();
+      return;
+    }
     const base64 = await blobToBase64(blob);
 
     showProcessing(true, `বিশ্লেষণ হচ্ছে… (${(blob.size/1024).toFixed(0)} KB)`);
@@ -2017,7 +2091,10 @@ async function transcribeAndInsert() {
     console.error('[Gemini]', err);
     showToast(`ত্রুটি: ${(err.message||'').slice(0,60)}`, 'error');
   } finally {
-    isProcessing = false; recBtn.disabled = false; showProcessing(false);
+    isProcessing = false;
+    recBtn.disabled = false;
+    if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+    showProcessing(false);
   }
 }
 
@@ -2416,10 +2493,21 @@ on(editorFolderChip, 'click', () => {
 });
 
 on(recBtn, 'click', toggleRecording);
+on(instantTranscribeBtn, 'click', toggleInstantTranscribe);
 on(doneBtn, 'click', onDone);
 
 on(clearRecBtn, 'click', () => {
-  if (isRecording) { mediaRecorder.onstop=null; try{mediaRecorder.stop();}catch{} isRecording=false; if (recBtn) recBtn.classList.remove('recording'); stopTimer(); }
+  if (isRecording) {
+    mediaRecorder.onstop = null;
+    try { mediaRecorder.stop(); } catch {}
+    isRecording = false;
+    instantRecording = false;
+    recordingMode = '';
+    recordingStartedAt = 0;
+    if (recBtn) recBtn.classList.remove('recording');
+    if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+    stopTimer();
+  }
   audioChunks=[]; segmentCount=0; updateSegmentsUI(); showToast('রেকর্ডিং মুছে গেছে');
 });
 

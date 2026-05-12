@@ -1,12 +1,36 @@
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite-preview';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 const TRANSCRIBE_PROMPT = [
-  'এই অডিওতে বাংলায় কথা বলা হয়েছে।',
-  'নির্দেশনা:',
-  '১. হুবহু যা বলা হয়েছে ঠিক তাই বাংলায় লিখবে — একটি শব্দও বাড়াবে না, বাদ দেবে না, পরিবর্তন করবে না।',
-  '২. নিজের পক্ষ থেকে কোনো মন্তব্য, ব্যাখ্যা বা অতিরিক্ত কিছু যোগ করবে না।',
-  '৩. উপযুক্ত জায়গায় দাড়ি (।), কমা (,), প্রশ্নবোধক চিহ্ন (?), বিস্ময়বোধক চিহ্ন (!) যোগ করবে।',
-  '৪. শুধু ট্রান্সক্রিপশনের টেক্সটটুকু দাও, আর কিছু লিখো না।',
+  'Transcribe only the clear human speech in the audio.',
+  'The expected language is Bangla/Bengali.',
+  'Do not translate, summarize, explain, or add any extra text.',
+  'Add only natural Bengali punctuation where appropriate.',
+  'If there is no clear speech, background noise only, silence, or unintelligible audio, return exactly: __NO_SPEECH__',
+  'Return only the transcript text or __NO_SPEECH__.',
 ].join('\n');
+
+function cleanTranscript(text) {
+  const value = (text || '').trim();
+  if (!value) return '';
+
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  const upper = normalized.toUpperCase();
+  if (upper === '__NO_SPEECH__' || upper.includes('NO_SPEECH')) return '';
+
+  const leakedPromptMarkers = [
+    'Transcribe only the clear human speech',
+    'The expected language is Bangla',
+    'Do not translate',
+    'Return only the transcript',
+    'এই অডিওতে বাংলায় কথা বলা হয়েছে',
+    'নির্দেশনা:',
+    'হুবহু যা বলা হয়েছে',
+    'নিজের পক্ষ থেকে কোনো মন্তব্য',
+    'শুধু ট্রান্সক্রিপশনের টেক্সট',
+  ];
+  if (leakedPromptMarkers.some(marker => normalized.includes(marker))) return '';
+
+  return value;
+}
 
 function json(statusCode, body, headers = {}) {
   return {
@@ -66,6 +90,9 @@ exports.handler = async event => {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      generationConfig: {
+        temperature: 0,
+      },
       contents: [{
         parts: [
           { inline_data: { mime_type: mimeType, data: audio } },
@@ -85,6 +112,6 @@ exports.handler = async event => {
     }, corsHeaders);
   }
 
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+  const text = cleanTranscript(data?.candidates?.[0]?.content?.parts?.[0]?.text);
   return json(200, { text }, corsHeaders);
 };
