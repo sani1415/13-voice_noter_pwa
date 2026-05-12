@@ -2521,6 +2521,20 @@ on(noteTextarea, 'input', () => {
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && currentNoteId) saveCurrentNote(true); });
 
+function syncVisualViewportHeight() {
+  const vv = window.visualViewport;
+  const height = vv ? vv.height : window.innerHeight;
+  document.documentElement.style.setProperty('--app-height', `${Math.round(height)}px`);
+
+  const keyboardInset = vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+  document.documentElement.classList.toggle('keyboard-open', keyboardInset > 120);
+}
+
+syncVisualViewportHeight();
+window.addEventListener('resize', syncVisualViewportHeight);
+window.visualViewport?.addEventListener('resize', syncVisualViewportHeight);
+window.visualViewport?.addEventListener('scroll', syncVisualViewportHeight);
+
 /* অ্যান্ড্রয়েড ব্যাক বাটন */
 window.addEventListener('popstate', () => {
   if (screenSettings && screenSettings.classList.contains('active')) {
