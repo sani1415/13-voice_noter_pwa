@@ -2699,8 +2699,6 @@ html.keyboard-open .segments-row {
   font-size: 0.75rem;
   color: var(--text-secondary, rgba(255,255,255,0.4));
 }
-.batch-file-size-warn { color: #f59e0b; font-weight: 600; }
-.batch-file-icon-warn { color: #f59e0b !important; opacity: 1 !important; }
 
 .batch-files-footer {
   padding-top: 16px;
