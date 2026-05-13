@@ -1,14 +1,18 @@
 /* Service Worker - Voice Notes PWA */
-const CACHE = 'voice-notes-v4';
+const CACHE = 'voice-notes-v5';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting();
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(c => c.addAll(ASSETS))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
   e.waitUntil((async () => {
+    // সব পুরনো cache মুছো
     const keys = await caches.keys();
     const oldCaches = keys.filter(k => k !== CACHE);
     await Promise.all(oldCaches.map(k => caches.delete(k)));
@@ -28,20 +32,30 @@ self.addEventListener('fetch', e => {
 
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
-    const cached = await cache.match(e.request);
 
-    // Cache থেকে সাথেসাথে দেখাও; background-এ নতুন version নামাও (stale-while-revalidate)
+    // Network-first for index.html এবং sw.js — সবসময় নতুন version
+    const isRoot = url.pathname === '/' || url.pathname === '/index.html';
+    if (isRoot) {
+      try {
+        const fresh = await fetch(e.request, { cache: 'no-store' });
+        if (fresh.ok) cache.put(e.request, fresh.clone());
+        return fresh;
+      } catch {
+        return await cache.match(e.request) || await cache.match('./index.html');
+      }
+    }
+
+    // বাকি সব: Cache-first, background update (stale-while-revalidate)
+    const cached = await cache.match(e.request);
     const fetchAndUpdate = fetch(e.request, { cache: 'no-store' })
       .then(fresh => { if (fresh.ok) cache.put(e.request, fresh.clone()); return fresh; })
       .catch(() => null);
 
     if (cached) {
-      // Cache hit — তাৎক্ষণিক দেখাও, নতুন version চুপচাপ পেছনে নামাও
-      fetchAndUpdate;
+      fetchAndUpdate; // background update, await করছি না
       return cached;
     }
 
-    // Cache miss — নেটওয়ার্ক থেকে আনো, না হলে index.html
     const fresh = await fetchAndUpdate;
     return fresh || await cache.match('./index.html');
   })());
