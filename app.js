@@ -87,8 +87,8 @@ let savedSelection = null;
 ══════════════════════════════════════════════════ */
 const $ = id => document.getElementById(id);
 /** null এলিমেন্টে addEventListener — ক্র্যাশ এড়ানো */
-function on(el, type, fn) {
-  if (el && typeof fn === 'function') el.addEventListener(type, fn);
+function on(el, type, fn, opts) {
+  if (el && typeof fn === 'function') el.addEventListener(type, fn, opts);
 }
 
 const screenList          = $('screen-list');
@@ -1902,19 +1902,28 @@ async function ensureMic() {
   }
 }
 
-function captureSelection() {
-  const s = noteTextarea.selectionStart, e = noteTextarea.selectionEnd;
-  if (s !== e) { savedSelection = { start: s, end: e }; replaceBanner.classList.remove('hidden'); }
+/** টেক্সটএরিয়ার ইনসার্ট/রিপ্লেস রেঞ্জ সেভ (কার্সার = start===end)। রেকর্ড বাটনে ক্লিকের আগে ব্লার হলে সিলেকশন হারায় — তাই pointerdown capture-এ ডাকতে হবে। */
+function captureInsertRange() {
+  if (!noteTextarea) return;
+  const len = noteTextarea.value.length;
+  let s = noteTextarea.selectionStart;
+  let e = noteTextarea.selectionEnd;
+  s = Math.max(0, Math.min(Number(s) || 0, len));
+  e = Math.max(s, Math.min(Number(e) || 0, len));
+  savedSelection = { start: s, end: e };
+  if (replaceBanner) {
+    if (s !== e) replaceBanner.classList.remove('hidden');
+    else replaceBanner.classList.add('hidden');
+  }
 }
 
-function clearSelection() { savedSelection = null; replaceBanner.classList.add('hidden'); }
+function clearSelection() { savedSelection = null; if (replaceBanner) replaceBanner.classList.add('hidden'); }
 
 async function toggleRecording() {
   if (isProcessing) return;
   if (isRecording) {
     stopSegment();
   } else {
-    if (segmentCount === 0) captureSelection();
     const ok = await ensureMic();
     if (ok) startSegment('manual');
   }
@@ -1968,7 +1977,6 @@ async function toggleInstantTranscribe() {
   audioChunks = [];
   segmentCount = 0;
   updateSegmentsUI();
-  captureSelection();
   const ok = await ensureMic();
   if (!ok) return;
   instantRecording = true;
@@ -2099,11 +2107,12 @@ async function transcribeAndInsert() {
     const existing = noteTextarea.value;
 
     if (savedSelection) {
-      noteTextarea.value = existing.slice(0, savedSelection.start) + text + existing.slice(savedSelection.end);
-      const pos = savedSelection.start + text.length;
+      const { start, end } = savedSelection;
+      noteTextarea.value = existing.slice(0, start) + text + existing.slice(end);
+      const pos = start + text.length;
       noteTextarea.setSelectionRange(pos, pos);
       clearSelection();
-      showToast('✓ সিলেক্ট করা অংশ রিপ্লেস হয়েছে', 'success');
+      showToast(start !== end ? '✓ সিলেক্ট করা অংশ রিপ্লেস হয়েছে' : '✓ কার্সারের জায়গায় যোগ হয়েছে', 'success');
     } else {
       noteTextarea.value = existing ? existing.trimEnd() + '\n' + text : text;
       noteTextarea.scrollTop = noteTextarea.scrollHeight;
@@ -2527,7 +2536,17 @@ on(editorFolderChip, 'click', () => {
 });
 
 on(recBtn, 'click', toggleRecording);
+on(recBtn, 'pointerdown', () => {
+  if (isProcessing || isRecording) return;
+  if (segmentCount !== 0) return;
+  captureInsertRange();
+}, { capture: true });
+
 on(instantTranscribeBtn, 'click', toggleInstantTranscribe);
+on(instantTranscribeBtn, 'pointerdown', () => {
+  if (isProcessing || isRecording) return;
+  captureInsertRange();
+}, { capture: true });
 on(doneBtn, 'click', onDone);
 
 on(clearRecBtn, 'click', () => {
