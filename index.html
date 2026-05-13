@@ -160,7 +160,10 @@
           <polyline points="15 18 9 12 15 6"/>
         </svg>
       </button>
-      <button type="button" class="header-title flex-1 note-title-btn" id="note-title-display" aria-label="নোটের নাম বদলান">নতুন নোট</button>
+      <div class="editor-header-title-block">
+        <button type="button" class="header-title note-title-btn" id="note-title-display" aria-label="নোটের নাম বদলান">নতুন নোট</button>
+        <span id="note-word-count" class="note-word-count" role="status" aria-live="polite">০টি শব্দ</span>
+      </div>
       <span class="save-status" id="save-status"></span>
       <button class="header-icon-btn delete-btn" id="delete-note-btn" aria-label="নোট মুছুন">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

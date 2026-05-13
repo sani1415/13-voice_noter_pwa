@@ -126,6 +126,7 @@ const backBtn             = $('back-btn');
 const deleteNoteBtn       = $('delete-note-btn');
 const noteTitleDisplay    = $('note-title-display');
 const saveStatus          = $('save-status');
+const noteWordCountEl     = $('note-word-count');
 const editorFolderChip    = $('editor-folder-chip');
 const editorFolderName    = $('editor-folder-name');
 const noteTextarea        = $('note-textarea');
@@ -354,6 +355,7 @@ function resetLocalEditorAfterImport() {
   pendingFolderId = null;
   if (noteTextarea) noteTextarea.value = '';
   if (noteTitleDisplay) noteTitleDisplay.textContent = 'নতুন নোট';
+  updateNoteWordCount();
   if (saveStatus) {
     saveStatus.textContent = '';
     saveStatus.classList.remove('visible');
@@ -827,6 +829,23 @@ function getEditorDisplayTitle() {
     return (notes[currentNoteId].title && notes[currentNoteId].title.trim()) || 'নতুন নোট';
   }
   return makeTitle(noteTextarea.value) || 'নতুন নোট';
+}
+
+/** হোয়াইটস্পেস-বিচ্ছিন্ন শব্দ গণনা (বাংলা/মিশ্র লেখা) */
+function countWordsInNoteText(text) {
+  const t = String(text || '').trim();
+  if (!t) return 0;
+  return t.split(/\s+/).filter(Boolean).length;
+}
+
+function updateNoteWordCount() {
+  if (!noteWordCountEl || !noteTextarea) return;
+  const n = countWordsInNoteText(noteTextarea.value);
+  try {
+    noteWordCountEl.textContent = `${n.toLocaleString('bn-BD')}টি শব্দ`;
+  } catch {
+    noteWordCountEl.textContent = `${n}টি শব্দ`;
+  }
 }
 
 function sortNoteEntries(entries) {
@@ -1542,6 +1561,7 @@ function openNote(id) {
   saveStatus.textContent       = '';
   saveStatus.classList.remove('visible');
   noteTextarea.scrollTop = noteTextarea.scrollHeight;
+  updateNoteWordCount();
 
   updateEditorFolderChip();
   resetRecording();
@@ -1563,6 +1583,7 @@ function openNewNote(inFolderId = null) {
   saveStatus.textContent       = '';
   saveStatus.classList.remove('visible');
 
+  updateNoteWordCount();
   updateEditorFolderChip();
   resetRecording();
 
@@ -2038,33 +2059,29 @@ function updateTimerDisplay() {
   recTimer.textContent = `${Math.floor(timerSeconds/60)}:${String(timerSeconds%60).padStart(2,'0')}`;
 }
 
-/** ট্রান্সক্রিপশন বসানোর পর নতুন অংশ সিলেক্ট (নেটিভ হাইলাইট); অন্য ক্লিকে সিলেকশন সরে যাবে */
+/** ট্রান্সক্রিপশন বসানোর পর নতুন অংশ সিলেক্ট (নেটিভ হাইলাইট); স্ক্রল নিউলাইন নয় — অক্ষর-অবস্থান অনুপাতে যাতা ওয়ার্ড-র‍্যাপে উপরে না ছিটকে */
 function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
   const ta = noteTextarea;
   if (!ta) return;
   const len = ta.value.length;
-  let a = Math.max(0, Math.min(insertStart, len));
-  let b = Math.max(a, Math.min(insertEnd, len));
+  const a = Math.max(0, Math.min(insertStart, len));
+  const b = Math.max(a, Math.min(insertEnd, len));
   ta.focus({ preventScroll: true });
   try {
     ta.setSelectionRange(a, b, 'forward');
   } catch { /* */ }
-  try {
-    const before = ta.value.slice(0, a);
-    const lineIndex = (before.match(/\n/g) || []).length;
-    const cs = getComputedStyle(ta);
-    const lh = parseFloat(cs.lineHeight) || 24;
-    const padT = parseFloat(cs.paddingTop) || 0;
-    const y = lineIndex * lh + padT;
-    const vh = ta.clientHeight;
+  const vh = ta.clientHeight;
+  const applyScroll = () => {
     const maxScroll = Math.max(0, ta.scrollHeight - vh);
-    let st = Math.max(0, y - vh * 0.4);
-    if (st > maxScroll) st = maxScroll;
+    if (maxScroll <= 0) return;
+    const mid = (a + b) * 0.5;
+    const frac = len > 0 ? mid / len : 0;
+    let st = frac * maxScroll - vh * 0.35;
+    st = Math.max(0, Math.min(maxScroll, st));
     ta.scrollTop = st;
-  } catch { /* */ }
-  try {
-    ta.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  } catch { /* */ }
+  };
+  applyScroll();
+  requestAnimationFrame(applyScroll);
 }
 
 /* ══════════════════════════════════════════════════
@@ -2140,14 +2157,20 @@ async function transcribeAndInsert() {
       noteTextarea.value = existing.slice(0, start) + text + existing.slice(end);
       const insertEnd = start + text.length;
       clearSelection();
-      requestAnimationFrame(() => focusNoteEditorWithInsertedRange(start, insertEnd));
+      updateNoteWordCount();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => focusNoteEditorWithInsertedRange(start, insertEnd));
+      });
       showToast(start !== end ? '✓ সিলেক্ট করা অংশ রিপ্লেস হয়েছে' : '✓ কার্সারের জায়গায় যোগ হয়েছে', 'success');
     } else {
       const trimmed = existing.trimEnd();
       noteTextarea.value = existing ? trimmed + '\n' + text : text;
       const insertStart = existing ? trimmed.length + 1 : 0;
       const insertEnd = insertStart + text.length;
-      requestAnimationFrame(() => focusNoteEditorWithInsertedRange(insertStart, insertEnd));
+      updateNoteWordCount();
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => focusNoteEditorWithInsertedRange(insertStart, insertEnd));
+      });
       showToast('✓ ট্রান্সক্রিপশন সম্পন্ন', 'success');
     }
 
@@ -2600,6 +2623,7 @@ on(cancelReplaceBtn, 'click', () => { clearSelection(); audioChunks=[]; segmentC
 
 on(noteTextarea, 'input', () => {
   if (noteTitleDisplay) noteTitleDisplay.textContent = getEditorDisplayTitle();
+  updateNoteWordCount();
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => saveCurrentNote(true), appPrefs.autoSaveDelay || 2000);
 });
