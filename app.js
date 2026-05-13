@@ -2059,7 +2059,7 @@ function updateTimerDisplay() {
   recTimer.textContent = `${Math.floor(timerSeconds/60)}:${String(timerSeconds%60).padStart(2,'0')}`;
 }
 
-/** ট্রান্সক্রিপশন বসানোর পর নতুন অংশ সিলেক্ট (নেটিভ হাইলাইট); স্ক্রল নিউলাইন নয় — অক্ষর-অবস্থান অনুপাতে যাতা ওয়ার্ড-র‍্যাপে উপরে না ছিটকে */
+/** ট্রান্সক্রিপশন বসানোর পর নতুন অংশ সিলেক্ট; স্ক্রল — সিলেকশনের শেষ দৃশ্যমান রেখে পুরো হাইলাইট ঢোকানো */
 function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
   const ta = noteTextarea;
   if (!ta) return;
@@ -2070,18 +2070,37 @@ function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
   try {
     ta.setSelectionRange(a, b, 'forward');
   } catch { /* */ }
+
+  const cs = getComputedStyle(ta);
+  const lh = Math.max(18, parseFloat(cs.lineHeight) || 24);
   const vh = ta.clientHeight;
+  const pad = 28;
+
   const applyScroll = () => {
-    const maxScroll = Math.max(0, ta.scrollHeight - vh);
+    const sh = ta.scrollHeight;
+    const maxScroll = Math.max(0, sh - vh);
     if (maxScroll <= 0) return;
-    const mid = (a + b) * 0.5;
-    const frac = len > 0 ? mid / len : 0;
-    let st = frac * maxScroll - vh * 0.35;
-    st = Math.max(0, Math.min(maxScroll, st));
+
+    const y0 = len > 0 ? (a / len) * sh : 0;
+    let y1 = len > 0 ? (b / len) * sh : lh;
+    if (y1 <= y0) y1 = y0 + lh * 0.5;
+
+    const stLo = y1 + pad - vh;
+    const stHi = y0 - pad;
+    let st;
+    if (stLo > stHi) {
+      st = y0 - pad;
+    } else {
+      st = Math.max(0, Math.min(maxScroll, stLo));
+      if (st > stHi) st = Math.max(0, Math.min(maxScroll, stHi));
+    }
+    st = Math.min(maxScroll, st + Math.round(lh * 0.65));
     ta.scrollTop = st;
   };
+
   applyScroll();
   requestAnimationFrame(applyScroll);
+  requestAnimationFrame(() => requestAnimationFrame(applyScroll));
 }
 
 /* ══════════════════════════════════════════════════
