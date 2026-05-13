@@ -1259,6 +1259,11 @@ html[data-list-density="detailed"] .note-card-preview {
   overflow-y: auto;
 }
 
+#note-textarea::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: inherit;
+}
+
 #note-textarea::placeholder {
   color: var(--editor-placeholder);
   font-size: 15px;

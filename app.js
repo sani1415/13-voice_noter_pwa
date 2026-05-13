@@ -2038,17 +2038,19 @@ function updateTimerDisplay() {
   recTimer.textContent = `${Math.floor(timerSeconds/60)}:${String(timerSeconds%60).padStart(2,'0')}`;
 }
 
-/** ট্রান্সক্রিপশন বসানোর পর কার্সার দৃশ্যমান — ফোকাস + স্ক্রল */
-function focusNoteEditorAtCaret(pos) {
+/** ট্রান্সক্রিপশন বসানোর পর নতুন অংশ সিলেক্ট (নেটিভ হাইলাইট); অন্য ক্লিকে সিলেকশন সরে যাবে */
+function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
   const ta = noteTextarea;
   if (!ta) return;
-  const p = Math.max(0, Math.min(pos, ta.value.length));
+  const len = ta.value.length;
+  let a = Math.max(0, Math.min(insertStart, len));
+  let b = Math.max(a, Math.min(insertEnd, len));
   ta.focus({ preventScroll: true });
   try {
-    ta.setSelectionRange(p, p);
+    ta.setSelectionRange(a, b, 'forward');
   } catch { /* */ }
   try {
-    const before = ta.value.slice(0, p);
+    const before = ta.value.slice(0, a);
     const lineIndex = (before.match(/\n/g) || []).length;
     const cs = getComputedStyle(ta);
     const lh = parseFloat(cs.lineHeight) || 24;
@@ -2136,14 +2138,16 @@ async function transcribeAndInsert() {
     if (savedSelection) {
       const { start, end } = savedSelection;
       noteTextarea.value = existing.slice(0, start) + text + existing.slice(end);
-      const pos = start + text.length;
+      const insertEnd = start + text.length;
       clearSelection();
-      requestAnimationFrame(() => focusNoteEditorAtCaret(pos));
+      requestAnimationFrame(() => focusNoteEditorWithInsertedRange(start, insertEnd));
       showToast(start !== end ? '✓ সিলেক্ট করা অংশ রিপ্লেস হয়েছে' : '✓ কার্সারের জায়গায় যোগ হয়েছে', 'success');
     } else {
-      noteTextarea.value = existing ? existing.trimEnd() + '\n' + text : text;
-      const pos = noteTextarea.value.length;
-      requestAnimationFrame(() => focusNoteEditorAtCaret(pos));
+      const trimmed = existing.trimEnd();
+      noteTextarea.value = existing ? trimmed + '\n' + text : text;
+      const insertStart = existing ? trimmed.length + 1 : 0;
+      const insertEnd = insertStart + text.length;
+      requestAnimationFrame(() => focusNoteEditorWithInsertedRange(insertStart, insertEnd));
       showToast('✓ ট্রান্সক্রিপশন সম্পন্ন', 'success');
     }
 
