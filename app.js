@@ -2769,18 +2769,30 @@ async function batchPickFolder() {
 
     if (batchFileList) {
       batchFileList.innerHTML = '';
-      found.forEach(f => {
+      found.forEach(async f => {
         const li = document.createElement('li');
         li.className = 'batch-file-item';
         li.setAttribute('role', 'listitem');
+
+        let sizeLabel = '';
+        let tooBig = false;
+        try {
+          const file = await f.handle.getFile();
+          f.size = file.size;
+          const mb = file.size / 1024 / 1024;
+          sizeLabel = mb >= 1 ? `${mb.toFixed(1)} MB` : `${(file.size/1024).toFixed(0)} KB`;
+          tooBig = file.size > BATCH_MAX_BYTES;
+        } catch { /* */ }
+
         li.innerHTML = `
-          <span class="batch-file-icon" aria-hidden="true">
+          <span class="batch-file-icon${tooBig ? ' batch-file-icon-warn' : ''}" aria-hidden="true">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
           </span>
           <span class="batch-file-info">
             <span class="batch-file-name">${escHtml(f.name)}</span>
             ${f.path !== f.name ? `<span class="batch-file-path">${escHtml(f.path)}</span>` : ''}
           </span>
+          ${sizeLabel ? `<span class="batch-file-size${tooBig ? ' batch-file-size-warn' : ''}">${sizeLabel}${tooBig ? ' ⚠' : ''}</span>` : ''}
         `;
         batchFileList.appendChild(li);
       });
@@ -2836,48 +2848,34 @@ function batchStatusIcon(status) {
   return '';
 }
 
-async function batchUploadToGemini(file, mimeType) {
-  const sessionRes = await fetch('/api/file-session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mimeType, size: file.size, displayName: file.name }),
+/* ফাইল → base64 string */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => resolve(e.target.result.split(',')[1]);
+    reader.onerror = () => reject(new Error('ফাইল পড়তে ব্যর্থ'));
+    reader.readAsDataURL(file);
   });
-  if (!sessionRes.ok) {
-    const e = await sessionRes.json().catch(() => ({}));
-    throw new Error(e.error || `Session error ${sessionRes.status}`);
-  }
-  const { uploadUrl } = await sessionRes.json();
-
-  const uploadRes = await fetch(uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': mimeType,
-      'X-Goog-Upload-Offset': '0',
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    body: file,
-  });
-  if (!uploadRes.ok) throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
-
-  const data = await uploadRes.json();
-  const fileUri = data?.file?.uri;
-  if (!fileUri) throw new Error('File URI পাওয়া যায়নি');
-  return { fileUri, mimeType };
 }
+
+/* সর্বোচ্চ ~3.3 MB audio (base64 হলে ~4.4 MB JSON → Vercel limit) */
+const BATCH_MAX_BYTES = 3.3 * 1024 * 1024;
 
 async function batchTranscribeOne(fileEntry) {
   const file     = await fileEntry.handle.getFile();
   const mimeType = AUDIO_MIME[fileEntry.ext] || 'audio/mpeg';
-  const { fileUri } = await batchUploadToGemini(file, mimeType);
+
+  if (file.size > BATCH_MAX_BYTES) {
+    const mb = (file.size / 1024 / 1024).toFixed(1);
+    throw new Error(`ফাইলটি ${mb} MB — সর্বোচ্চ ৩.৩ MB সাপোর্টেড। ছোট ফাইল ব্যবহার করুন।`);
+  }
+
+  const audio = await fileToBase64(file);
 
   const res = await fetch(TRANSCRIBE_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      fileUri,
-      mimeType,
-      model: appPrefs.transcriptionModel,
-    }),
+    body: JSON.stringify({ audio, mimeType, model: appPrefs.transcriptionModel }),
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
