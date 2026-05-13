@@ -968,6 +968,28 @@ html[data-theme="dark"] .settings-user-badge-warn {
 .settings-switch input:checked + span::before {
   transform: translateX(20px);
 }
+.settings-select {
+  width: 100%;
+  padding: 8px 32px 8px 10px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  appearance: none;
+  -webkit-appearance: none;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+  margin-top: 6px;
+}
+.settings-select:focus {
+  border-color: var(--accent);
+}
+.settings-select option {
+  background: var(--surface);
+  color: var(--text);
+}
 .settings-status-row {
   display: flex;
   gap: 12px;

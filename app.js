@@ -42,12 +42,22 @@ let pendingFolderId = null; // নতুন নোটের জন্য প্�
 let activeFolderActionId = null; // folder options sheet এর জন্য
 let activeNoteActionId   = null; // note options sheet
 let listSort = 'updated_desc';  // localStorage: vn-list-sort
+const TRANSCRIPTION_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-3.1-pro-preview',
+];
+
 let appPrefs = {
   theme: 'system',
   fontSize: 'medium',
   listDensity: 'comfortable',
   autoSaveDelay: 2000,
   transcribeAutoSave: true,
+  transcriptionModel: 'gemini-2.5-flash',
   editorPaper: 'default',
   accent: 'blue',
   lineHeight: 'normal',
@@ -881,6 +891,7 @@ function loadPrefs() {
     listDensity: get('vn-list-density', 'comfortable'),
     autoSaveDelay: Number(get('vn-autosave-delay', '2000')) || 2000,
     transcribeAutoSave: get('vn-transcribe-autosave', 'true') !== 'false',
+    transcriptionModel: TRANSCRIPTION_MODELS.includes(get('vn-transcription-model', '')) ? get('vn-transcription-model', '') : 'gemini-2.5-flash',
     editorPaper: ['default', 'cream', 'cool', 'oled'].includes(paper) ? paper : 'default',
     accent: ['blue', 'teal', 'violet'].includes(acc) ? acc : 'blue',
     lineHeight: ['compact', 'normal', 'relaxed'].includes(lh) ? lh : 'normal',
@@ -896,6 +907,7 @@ function savePref(key, value) {
     listDensity: 'vn-list-density',
     autoSaveDelay: 'vn-autosave-delay',
     transcribeAutoSave: 'vn-transcribe-autosave',
+    transcriptionModel: 'vn-transcription-model',
     editorPaper: 'vn-editor-paper',
     accent: 'vn-accent',
     lineHeight: 'vn-line-height',
@@ -932,6 +944,20 @@ function syncSettingsControls() {
   });
   if (transcribeAutoSaveToggle) {
     transcribeAutoSaveToggle.checked = appPrefs.transcribeAutoSave !== false;
+  }
+  const modelSelect = document.getElementById('pref-transcription-model');
+  if (modelSelect) modelSelect.value = appPrefs.transcriptionModel || 'gemini-2.5-flash';
+  const modelValueEl = document.getElementById('transcription-model-value');
+  if (modelValueEl) {
+    const labels = {
+      'gemini-2.5-flash': '2.5 Flash',
+      'gemini-2.5-flash-lite': '2.5 Flash Lite',
+      'gemini-2.5-pro': '2.5 Pro',
+      'gemini-3.1-flash-lite': '3.1 Flash Lite',
+      'gemini-3-flash-preview': '3 Flash Preview',
+      'gemini-3.1-pro-preview': '3.1 Pro Preview',
+    };
+    modelValueEl.textContent = labels[appPrefs.transcriptionModel] || '2.5 Flash';
   }
   if (themeValue) {
     themeValue.textContent = ({ system: 'সিস্টেম ডিফল্ট', light: 'লাইট', dark: 'ডার্ক' })[appPrefs.theme] || 'সিস্টেম ডিফল্ট';
@@ -2055,6 +2081,7 @@ async function transcribeAndInsert() {
       body: JSON.stringify({
         audio: base64,
         mimeType: effectiveMime,
+        model: appPrefs.transcriptionModel || 'gemini-2.5-flash',
       }),
     });
 
@@ -2468,6 +2495,13 @@ document.querySelectorAll('.segmented-control, .settings-list-options').forEach(
 
 on(transcribeAutoSaveToggle, 'change', () => {
   savePref('transcribeAutoSave', transcribeAutoSaveToggle.checked);
+});
+
+const transcriptionModelSelect = document.getElementById('pref-transcription-model');
+on(transcriptionModelSelect, 'change', () => {
+  if (TRANSCRIPTION_MODELS.includes(transcriptionModelSelect.value)) {
+    savePref('transcriptionModel', transcriptionModelSelect.value);
+  }
 });
 
 /* ══════════════════════════════════════════════════

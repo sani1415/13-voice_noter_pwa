@@ -1,4 +1,12 @@
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const DEFAULT_GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const ALLOWED_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-pro',
+  'gemini-3.1-flash-lite',
+  'gemini-3-flash-preview',
+  'gemini-3.1-pro-preview',
+];
 const TRANSCRIBE_PROMPT = [
   'Transcribe only the clear human speech in the audio.',
   'The expected language is Bangla/Bengali.',
@@ -87,12 +95,14 @@ module.exports = async function handler(req, res) {
 
   const audio = typeof payload.audio === 'string' ? payload.audio : '';
   const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType : 'audio/webm';
+  const requestedModel = typeof payload.model === 'string' ? payload.model : '';
+  const geminiModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_GEMINI_MODEL;
   if (!audio) {
     sendJson(res, 400, { error: 'Audio is required' });
     return;
   }
 
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
   const geminiResponse = await fetch(geminiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

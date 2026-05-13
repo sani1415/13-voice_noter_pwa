@@ -398,6 +398,23 @@
             </div>
             <div class="settings-row settings-row-stack">
               <div class="settings-row-main">
+                <span class="settings-icon">🤖</span>
+                <div>
+                  <p class="settings-row-title">AI মডেল</p>
+                  <p class="settings-row-sub" id="transcription-model-value">2.5 Flash</p>
+                </div>
+              </div>
+              <select id="pref-transcription-model" class="settings-select" aria-label="ট্রান্সক্রিপশন মডেল">
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash — দ্রুত ও সাশ্রয়ী (ডিফল্ট)</option>
+                <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite — সবচেয়ে দ্রুত ও সস্তা</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro — সবচেয়ে নির্ভুল</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite — নতুন, ভালো নির্ভুলতা</option>
+                <option value="gemini-3-flash-preview">Gemini 3 Flash Preview — পরীক্ষামূলক</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview — সবচেয়ে শক্তিশালী (পরীক্ষামূলক)</option>
+              </select>
+            </div>
+            <div class="settings-row settings-row-stack">
+              <div class="settings-row-main">
                 <span class="settings-icon">↕</span>
                 <div>
                   <p class="settings-row-title">লাইনে লাইনে ফাঁক</p>
