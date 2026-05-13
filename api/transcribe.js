@@ -94,25 +94,29 @@ module.exports = async function handler(req, res) {
   }
 
   const audio = typeof payload.audio === 'string' ? payload.audio : '';
+  const fileUri = typeof payload.fileUri === 'string' ? payload.fileUri : '';
   const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType : 'audio/webm';
   const requestedModel = typeof payload.model === 'string' ? payload.model : '';
   const geminiModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_GEMINI_MODEL;
-  if (!audio) {
-    sendJson(res, 400, { error: 'Audio is required' });
+
+  if (!audio && !fileUri) {
+    sendJson(res, 400, { error: 'audio অথবা fileUri আবশ্যক' });
     return;
   }
+
+  const audioPart = fileUri
+    ? { file_data: { file_uri: fileUri, mime_type: mimeType } }
+    : { inline_data: { mime_type: mimeType, data: audio } };
 
   const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
   const geminiResponse = await fetch(geminiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      generationConfig: {
-        temperature: 0,
-      },
+      generationConfig: { temperature: 0 },
       contents: [{
         parts: [
-          { inline_data: { mime_type: mimeType, data: audio } },
+          audioPart,
           { text: TRANSCRIBE_PROMPT },
         ],
       }],

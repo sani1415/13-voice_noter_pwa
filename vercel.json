@@ -1,4 +1,8 @@
 {
+  "functions": {
+    "api/transcribe.js": { "maxDuration": 60 },
+    "api/file-session.js": { "maxDuration": 15 }
+  },
   "headers": [
     {
       "source": "/sw.js",

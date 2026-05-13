@@ -2665,8 +2665,312 @@ window.addEventListener('resize', syncVisualViewportHeight);
 window.visualViewport?.addEventListener('resize', syncVisualViewportHeight);
 window.visualViewport?.addEventListener('scroll', syncVisualViewportHeight);
 
+/* ══════════════════════════════════════════════════
+   ব্যাচ ট্রান্সক্রিপশন
+══════════════════════════════════════════════════ */
+const screenBatch        = $('screen-batch');
+const batchBackBtn       = $('batch-back-btn');
+const batchBtn           = $('batch-btn');
+const batchFolderBtn     = $('batch-folder-btn');
+const batchChangeFolderBtn = $('batch-change-folder-btn');
+const batchStartBtn      = $('batch-start-btn');
+const batchDoneBtn       = $('batch-done-btn');
+const batchAgainBtn      = $('batch-again-btn');
+const batchStepPick      = $('batch-step-pick');
+const batchStepFiles     = $('batch-step-files');
+const batchStepProgress  = $('batch-step-progress');
+const batchFileCount     = $('batch-file-count');
+const batchFolderPath    = $('batch-folder-path');
+const batchFileList      = $('batch-file-list');
+const batchProgressFill  = $('batch-progress-fill');
+const batchProgressLabel = $('batch-progress-label');
+const batchDoneCount     = $('batch-done-count');
+const batchTotalCount    = $('batch-total-count');
+const batchErrBadge      = $('batch-err-badge');
+const batchErrCount      = $('batch-err-count');
+const batchProgressList  = $('batch-progress-list');
+const batchProgressFooter = $('batch-progress-footer');
+const batchBrowserNote   = $('batch-browser-note');
+
+const AUDIO_EXTS = new Set(['mp3','wav','m4a','ogg','webm','mp4','flac','aac','opus','wma']);
+const AUDIO_MIME = {
+  mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', ogg: 'audio/ogg',
+  webm: 'audio/webm', mp4: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac',
+  opus: 'audio/ogg', wma: 'audio/x-ms-wma',
+};
+
+let batchFiles = [];         // { file, name, path, ext }
+let batchRunning = false;
+
+function openBatchScreen() {
+  if (screenBatch) screenBatch.classList.add('active');
+  history.pushState({ screen: 'batch' }, '');
+  if (batchBrowserNote) {
+    batchBrowserNote.textContent = 'showDirectoryPicker' in window
+      ? ''
+      : 'আপনার ব্রাউজার File System Access API সাপোর্ট করে না। Chrome বা Edge ব্যবহার করুন।';
+  }
+}
+
+function closeBatchScreen() {
+  if (batchRunning) return;
+  if (screenBatch) screenBatch.classList.remove('active');
+}
+
+function batchShowStep(step) {
+  ['batch-step-pick','batch-step-files','batch-step-progress'].forEach(id => {
+    const el = $(id);
+    if (el) el.classList.toggle('hidden', id !== step);
+  });
+}
+
+async function batchScanDir(dirHandle, pathPrefix = '') {
+  const results = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    if (handle.kind === 'directory') {
+      const sub = await batchScanDir(handle, pathPrefix ? `${pathPrefix}/${name}` : name);
+      results.push(...sub);
+    } else {
+      const ext = name.split('.').pop().toLowerCase();
+      if (AUDIO_EXTS.has(ext)) {
+        results.push({ handle, name, path: pathPrefix ? `${pathPrefix}/${name}` : name, ext });
+      }
+    }
+  }
+  return results;
+}
+
+async function batchPickFolder() {
+  if (!('showDirectoryPicker' in window)) {
+    showToast('এই ব্রাউজার ফোল্ডার পিকার সাপোর্ট করে না। Chrome/Edge ব্যবহার করুন।');
+    return;
+  }
+  let dirHandle;
+  try {
+    dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+  } catch { return; }
+
+  showToast('ফাইল খুঁজছে…');
+  try {
+    const found = await batchScanDir(dirHandle);
+    batchFiles = found;
+
+    if (!found.length) {
+      showToast('কোনো অডিও ফাইল পাওয়া যায়নি।');
+      return;
+    }
+
+    if (batchFileCount)  batchFileCount.textContent = found.length;
+    if (batchFolderPath) batchFolderPath.textContent = dirHandle.name;
+
+    if (batchFileList) {
+      batchFileList.innerHTML = '';
+      found.forEach(f => {
+        const li = document.createElement('li');
+        li.className = 'batch-file-item';
+        li.setAttribute('role', 'listitem');
+        li.innerHTML = `
+          <span class="batch-file-icon" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+          </span>
+          <span class="batch-file-info">
+            <span class="batch-file-name">${escHtml(f.name)}</span>
+            ${f.path !== f.name ? `<span class="batch-file-path">${escHtml(f.path)}</span>` : ''}
+          </span>
+        `;
+        batchFileList.appendChild(li);
+      });
+    }
+
+    batchShowStep('batch-step-files');
+  } catch (err) {
+    showToast('ফোল্ডার পড়তে পারেনি: ' + err.message);
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function batchSaveNoteDirectly(title, content) {
+  const now = new Date().toISOString();
+  const id  = crypto.randomUUID();
+  notes[id] = {
+    title: title || 'নতুন নোট',
+    content,
+    titleCustom: !!title,
+    created: now,
+    updated: now,
+    folderId: null,
+    pinned: false,
+    tags: [],
+    labelColor: '',
+  };
+  persistNotes();
+  sbUpsertNote(id);
+  return id;
+}
+
+function batchUpdateProgress(index, status, sub = '') {
+  const item = batchProgressList?.querySelector(`[data-batch-idx="${index}"]`);
+  if (!item) return;
+  const statusEl = item.querySelector('.batch-prog-status');
+  const subEl    = item.querySelector('.batch-prog-sub');
+  if (statusEl) {
+    statusEl.className = `batch-prog-status ${status}`;
+    statusEl.innerHTML = batchStatusIcon(status);
+  }
+  if (subEl && sub) subEl.textContent = sub;
+}
+
+function batchStatusIcon(status) {
+  if (status === 'waiting')  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/></svg>`;
+  if (status === 'running')  return `<svg class="batch-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>`;
+  if (status === 'done')     return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  if (status === 'error')    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  if (status === 'skipped')  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+  return '';
+}
+
+async function batchUploadToGemini(file, mimeType) {
+  const sessionRes = await fetch('/api/file-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mimeType, size: file.size, displayName: file.name }),
+  });
+  if (!sessionRes.ok) {
+    const e = await sessionRes.json().catch(() => ({}));
+    throw new Error(e.error || `Session error ${sessionRes.status}`);
+  }
+  const { uploadUrl } = await sessionRes.json();
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': mimeType,
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: file,
+  });
+  if (!uploadRes.ok) throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
+
+  const data = await uploadRes.json();
+  const fileUri = data?.file?.uri;
+  if (!fileUri) throw new Error('File URI পাওয়া যায়নি');
+  return { fileUri, mimeType };
+}
+
+async function batchTranscribeOne(fileEntry) {
+  const file     = await fileEntry.handle.getFile();
+  const mimeType = AUDIO_MIME[fileEntry.ext] || 'audio/mpeg';
+  const { fileUri } = await batchUploadToGemini(file, mimeType);
+
+  const res = await fetch(TRANSCRIBE_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      fileUri,
+      mimeType,
+      model: appPrefs.transcriptionModel,
+    }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.error || `HTTP ${res.status}`);
+  }
+  const { text } = await res.json();
+  return text || '';
+}
+
+async function batchStartTranscription() {
+  if (!batchFiles.length) return;
+  batchRunning = true;
+  if (batchStartBtn) batchStartBtn.disabled = true;
+
+  batchShowStep('batch-step-progress');
+  if (batchProgressFooter) batchProgressFooter.classList.add('hidden');
+  if (batchErrBadge) batchErrBadge.classList.add('hidden');
+
+  if (batchProgressList) {
+    batchProgressList.innerHTML = '';
+    batchFiles.forEach((f, i) => {
+      const li = document.createElement('li');
+      li.className = 'batch-prog-item';
+      li.setAttribute('role', 'listitem');
+      li.setAttribute('data-batch-idx', i);
+      li.innerHTML = `
+        <span class="batch-prog-status waiting">${batchStatusIcon('waiting')}</span>
+        <span class="batch-prog-info">
+          <span class="batch-prog-name">${escHtml(f.name)}</span>
+          <span class="batch-prog-sub">অপেক্ষায়…</span>
+        </span>
+      `;
+      batchProgressList.appendChild(li);
+    });
+  }
+
+  if (batchTotalCount) batchTotalCount.textContent = batchFiles.length;
+  if (batchDoneCount)  batchDoneCount.textContent  = 0;
+
+  let doneCount = 0;
+  let errCount  = 0;
+
+  for (let i = 0; i < batchFiles.length; i++) {
+    const f = batchFiles[i];
+    batchUpdateProgress(i, 'running', 'আপলোড হচ্ছে…');
+    if (batchProgressLabel) batchProgressLabel.textContent = `${f.name} ট্রান্সক্রাইব হচ্ছে…`;
+    if (batchProgressFill)  batchProgressFill.style.width  = `${Math.round(i / batchFiles.length * 100)}%`;
+
+    try {
+      batchUpdateProgress(i, 'running', 'ট্রান্সক্রাইব হচ্ছে…');
+      const text = await batchTranscribeOne(f);
+
+      if (!text.trim()) {
+        batchUpdateProgress(i, 'skipped', 'কোনো কথা পাওয়া যায়নি');
+      } else {
+        const titleBase = f.name.replace(/\.[^.]+$/, '');
+        batchSaveNoteDirectly(titleBase, text.trim());
+        batchUpdateProgress(i, 'done', 'সম্পন্ন — নোট সেভ হয়েছে');
+      }
+      doneCount++;
+    } catch (err) {
+      errCount++;
+      batchUpdateProgress(i, 'error', 'ত্রুটি: ' + err.message);
+    }
+
+    if (batchDoneCount) batchDoneCount.textContent = doneCount + (errCount > 0 ? 0 : 0);
+    if (batchErrCount)  batchErrCount.textContent  = errCount;
+    if (errCount > 0 && batchErrBadge) batchErrBadge.classList.remove('hidden');
+    if (batchDoneCount) batchDoneCount.textContent = i + 1 - errCount > 0 ? i + 1 - errCount : 0;
+
+    if (i === batchFiles.length - 1) {
+      if (batchProgressFill)  batchProgressFill.style.width  = '100%';
+      if (batchProgressLabel) batchProgressLabel.textContent = `সম্পন্ন! ${doneCount}টি নোট সেভ হয়েছে।`;
+      if (batchDoneCount) batchDoneCount.textContent = doneCount;
+    }
+  }
+
+  batchRunning = false;
+  renderNotesList();
+  if (batchProgressFooter) batchProgressFooter.classList.remove('hidden');
+  if (batchStartBtn) batchStartBtn.disabled = false;
+}
+
+on(batchBtn, 'click', openBatchScreen);
+on(batchBackBtn, 'click', () => { if (screenBatch?.classList.contains('active')) history.back(); });
+on(batchFolderBtn, 'click', batchPickFolder);
+on(batchChangeFolderBtn, 'click', () => { batchFiles = []; batchShowStep('batch-step-pick'); });
+on(batchStartBtn, 'click', batchStartTranscription);
+on(batchDoneBtn, 'click', () => { closeBatchScreen(); history.back(); });
+on(batchAgainBtn, 'click', () => { batchFiles = []; batchRunning = false; batchShowStep('batch-step-pick'); });
+
 /* অ্যান্ড্রয়েড ব্যাক বাটন */
 window.addEventListener('popstate', () => {
+  if (screenBatch && screenBatch.classList.contains('active')) {
+    closeBatchScreen();
+    return;
+  }
   if (screenSettings && screenSettings.classList.contains('active')) {
     closeSettingsPage();
     return;

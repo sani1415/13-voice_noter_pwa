@@ -82,6 +82,13 @@
             <path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </button>
+        <button class="header-icon-btn" id="batch-btn" aria-label="ব্যাচ ট্রান্সক্রিপশন" title="ব্যাচ ট্রান্সক্রিপশন">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+          </svg>
+        </button>
         <button class="header-icon-btn" id="settings-btn" aria-label="সেটিংস">
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -547,6 +554,86 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════
+       স্ক্রিন ৪: ব্যাচ ট্রান্সক্রিপশন
+  ══════════════════════════════════════ -->
+  <div id="screen-batch" class="screen">
+    <header class="header">
+      <button type="button" class="header-icon-btn" id="batch-back-btn" aria-label="পেছনে">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <span class="header-title flex-1" style="text-align:center">ব্যাচ ট্রান্সক্রিপশন</span>
+      <span style="min-width:42px" aria-hidden="true"></span>
+    </header>
+
+    <div class="batch-page" id="batch-page">
+
+      <!-- ধাপ ১: ফোল্ডার সিলেক্ট -->
+      <div id="batch-step-pick" class="batch-step">
+        <div class="batch-hero-icon" aria-hidden="true">
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+          </svg>
+        </div>
+        <h2 class="batch-hero-title">অডিও ফোল্ডার বেছে নিন</h2>
+        <p class="batch-hero-desc">OneDrive বা পিসির যেকোনো ফোল্ডার সিলেক্ট করুন। সাব-ফোল্ডারসহ সব অডিও ফাইল খুঁজে বের করে একটার পর একটা ট্রান্সক্রাইব করবে, প্রতিটি আলাদা নোট হিসেবে সেভ হবে।</p>
+        <p class="batch-hero-formats">সাপোর্টেড ফরম্যাট: MP3, WAV, M4A, OGG, WEBM, MP4, FLAC, AAC</p>
+        <button type="button" class="batch-primary-btn" id="batch-folder-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          ফোল্ডার সিলেক্ট করুন
+        </button>
+        <p class="batch-browser-note" id="batch-browser-note"></p>
+      </div>
+
+      <!-- ধাপ ২: ফাইল তালিকা -->
+      <div id="batch-step-files" class="batch-step hidden">
+        <div class="batch-files-header">
+          <div>
+            <p class="batch-files-title">পাওয়া গেছে: <strong id="batch-file-count">০</strong>টি অডিও ফাইল</p>
+            <p class="batch-files-path" id="batch-folder-path"></p>
+          </div>
+          <button type="button" class="batch-change-btn" id="batch-change-folder-btn">বদলান</button>
+        </div>
+        <div id="batch-file-list" class="batch-file-list" role="list"></div>
+        <div class="batch-files-footer">
+          <button type="button" class="batch-primary-btn" id="batch-start-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            ট্রান্সক্রিপশন শুরু করুন
+          </button>
+        </div>
+      </div>
+
+      <!-- ধাপ ৩: প্রগ্রেস -->
+      <div id="batch-step-progress" class="batch-step hidden">
+        <div class="batch-progress-summary">
+          <div class="batch-progress-bar-wrap">
+            <div class="batch-progress-bar-bg">
+              <div class="batch-progress-bar-fill" id="batch-progress-fill"></div>
+            </div>
+          </div>
+          <p class="batch-progress-label" id="batch-progress-label">প্রস্তুতি নিচ্ছে…</p>
+          <div class="batch-progress-counts">
+            <span id="batch-done-count">০</span> / <span id="batch-total-count">০</span> সম্পন্ন
+            <span class="batch-err-badge hidden" id="batch-err-badge"> · <span id="batch-err-count">০</span>টি ব্যর্থ</span>
+          </div>
+        </div>
+        <div id="batch-progress-list" class="batch-progress-list" role="list"></div>
+        <div class="batch-progress-footer hidden" id="batch-progress-footer">
+          <button type="button" class="batch-primary-btn" id="batch-done-btn">সম্পন্ন — নোট দেখুন</button>
+          <button type="button" class="batch-secondary-btn" id="batch-again-btn">আবার শুরু করুন</button>
+        </div>
+      </div>
+
     </div>
   </div>
 
