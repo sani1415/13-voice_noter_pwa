@@ -2038,6 +2038,33 @@ function updateTimerDisplay() {
   recTimer.textContent = `${Math.floor(timerSeconds/60)}:${String(timerSeconds%60).padStart(2,'0')}`;
 }
 
+/** ট্রান্সক্রিপশন বসানোর পর কার্সার দৃশ্যমান — ফোকাস + স্ক্রল */
+function focusNoteEditorAtCaret(pos) {
+  const ta = noteTextarea;
+  if (!ta) return;
+  const p = Math.max(0, Math.min(pos, ta.value.length));
+  ta.focus({ preventScroll: true });
+  try {
+    ta.setSelectionRange(p, p);
+  } catch { /* */ }
+  try {
+    const before = ta.value.slice(0, p);
+    const lineIndex = (before.match(/\n/g) || []).length;
+    const cs = getComputedStyle(ta);
+    const lh = parseFloat(cs.lineHeight) || 24;
+    const padT = parseFloat(cs.paddingTop) || 0;
+    const y = lineIndex * lh + padT;
+    const vh = ta.clientHeight;
+    const maxScroll = Math.max(0, ta.scrollHeight - vh);
+    let st = Math.max(0, y - vh * 0.4);
+    if (st > maxScroll) st = maxScroll;
+    ta.scrollTop = st;
+  } catch { /* */ }
+  try {
+    ta.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  } catch { /* */ }
+}
+
 /* ══════════════════════════════════════════════════
    DONE — ট্রান্সক্রিপশন
 ══════════════════════════════════════════════════ */
@@ -2110,12 +2137,13 @@ async function transcribeAndInsert() {
       const { start, end } = savedSelection;
       noteTextarea.value = existing.slice(0, start) + text + existing.slice(end);
       const pos = start + text.length;
-      noteTextarea.setSelectionRange(pos, pos);
       clearSelection();
+      requestAnimationFrame(() => focusNoteEditorAtCaret(pos));
       showToast(start !== end ? '✓ সিলেক্ট করা অংশ রিপ্লেস হয়েছে' : '✓ কার্সারের জায়গায় যোগ হয়েছে', 'success');
     } else {
       noteTextarea.value = existing ? existing.trimEnd() + '\n' + text : text;
-      noteTextarea.scrollTop = noteTextarea.scrollHeight;
+      const pos = noteTextarea.value.length;
+      requestAnimationFrame(() => focusNoteEditorAtCaret(pos));
       showToast('✓ ট্রান্সক্রিপশন সম্পন্ন', 'success');
     }
 
