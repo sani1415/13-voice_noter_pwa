@@ -419,6 +419,18 @@ html[data-theme="dark"] .auth-sheet-message.auth-sheet-message-error {
   transform: translateX(0);
 }
 
+#screen-batch {
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  will-change: transform;
+  z-index: 3;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+#screen-batch.active {
+  transform: translateX(0);
+}
+
 /* ═══ হেডার ═══ */
 .header {
   background: var(--panel);

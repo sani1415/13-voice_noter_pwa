@@ -2703,6 +2703,10 @@ let batchFiles = [];         // { file, name, path, ext }
 let batchRunning = false;
 
 function openBatchScreen() {
+  if (!batchRunning) {
+    batchFiles = [];
+    batchShowStep('batch-step-pick');
+  }
   if (screenBatch) screenBatch.classList.add('active');
   history.pushState({ screen: 'batch' }, '');
   if (batchBrowserNote) {
