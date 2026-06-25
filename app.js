@@ -4,6 +4,8 @@
    কনফিগ
 ══════════════════════════════════════════════════ */
 const TRANSCRIBE_ENDPOINT = '/api/transcribe';
+const SONIOX_KEY_ENDPOINT = '/api/soniox-key';
+const SONIOX_CLIENT_CDN = 'https://esm.sh/@soniox/client@2';
 try { localStorage.removeItem('vn-api-key'); } catch { /* পুরনো leaked key cache থাকলে মুছে দাও */ }
 
 /* ══════════════════════════════════════════════════
@@ -51,12 +53,15 @@ const TRANSCRIPTION_MODELS = [
   'gemini-3.1-pro-preview',
 ];
 
+const TRANSCRIPTION_MODES = ['batch', 'live'];
+
 let appPrefs = {
   theme: 'system',
   fontSize: 'medium',
   listDensity: 'comfortable',
   autoSaveDelay: 2000,
   transcribeAutoSave: true,
+  transcriptionMode: 'batch',
   transcriptionModel: 'gemini-2.5-flash',
   editorPaper: 'default',
   accent: 'blue',
@@ -81,6 +86,14 @@ let timerInterval  = null;
 let timerSeconds   = 0;
 let autoSaveTimer  = null;
 let savedSelection = null;
+
+let sonioxClient     = null;
+let sonioxClientLoad = null;
+let liveRecording    = null;
+let liveFinalText    = '';
+let livePartialText  = '';
+/** @type {{ prefix: string, suffix: string, start: number, end: number } | null} */
+let liveInsertAnchor = null;
 
 /* ══════════════════════════════════════════════════
    DOM রেফারেন্স
@@ -904,12 +917,14 @@ function loadPrefs() {
   const acc = get('vn-accent', 'blue');
   const lh = get('vn-line-height', 'normal');
   const ew = get('vn-editor-width', 'full');
+  const tm = get('vn-transcription-mode', 'batch');
   appPrefs = {
     theme: get('vn-theme', 'system'),
     fontSize: get('vn-font-size', 'medium'),
     listDensity: get('vn-list-density', 'comfortable'),
     autoSaveDelay: Number(get('vn-autosave-delay', '2000')) || 2000,
     transcribeAutoSave: get('vn-transcribe-autosave', 'true') !== 'false',
+    transcriptionMode: TRANSCRIPTION_MODES.includes(tm) ? tm : 'batch',
     transcriptionModel: TRANSCRIPTION_MODELS.includes(get('vn-transcription-model', '')) ? get('vn-transcription-model', '') : 'gemini-2.5-flash',
     editorPaper: ['default', 'cream', 'cool', 'oled'].includes(paper) ? paper : 'default',
     accent: ['blue', 'teal', 'violet'].includes(acc) ? acc : 'blue',
@@ -926,6 +941,7 @@ function savePref(key, value) {
     listDensity: 'vn-list-density',
     autoSaveDelay: 'vn-autosave-delay',
     transcribeAutoSave: 'vn-transcribe-autosave',
+    transcriptionMode: 'vn-transcription-mode',
     transcriptionModel: 'vn-transcription-model',
     editorPaper: 'vn-editor-paper',
     accent: 'vn-accent',
@@ -963,6 +979,14 @@ function syncSettingsControls() {
   });
   if (transcribeAutoSaveToggle) {
     transcribeAutoSaveToggle.checked = appPrefs.transcribeAutoSave !== false;
+  }
+  const modeValueEl = document.getElementById('transcription-mode-value');
+  if (modeValueEl) {
+    modeValueEl.textContent = appPrefs.transcriptionMode === 'live' ? 'লাইভ (Soniox)' : 'রেকর্ড পরে (Gemini)';
+  }
+  const modelRow = document.getElementById('transcription-model-row');
+  if (modelRow) {
+    modelRow.hidden = appPrefs.transcriptionMode === 'live';
   }
   const modelSelect = document.getElementById('pref-transcription-model');
   if (modelSelect) modelSelect.value = appPrefs.transcriptionModel || 'gemini-2.5-flash';
@@ -1940,8 +1964,241 @@ function captureInsertRange() {
 
 function clearSelection() { savedSelection = null; if (replaceBanner) replaceBanner.classList.add('hidden'); }
 
+function isLiveTranscription() {
+  return appPrefs.transcriptionMode === 'live';
+}
+
+async function loadSonioxClientModule() {
+  if (!sonioxClientLoad) {
+    sonioxClientLoad = import(SONIOX_CLIENT_CDN);
+  }
+  return sonioxClientLoad;
+}
+
+async function getSonioxClient() {
+  if (sonioxClient) return sonioxClient;
+  const { SonioxClient } = await loadSonioxClientModule();
+  sonioxClient = new SonioxClient({
+    config: async () => {
+      const res = await fetch(SONIOX_KEY_ENDPOINT, { method: 'POST' });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e?.error || `Temporary key failed: HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data?.api_key) throw new Error('Soniox temporary API key পাওয়া যায়নি');
+      return { api_key: data.api_key };
+    },
+  });
+  return sonioxClient;
+}
+
+function beginLiveInsertAnchor() {
+  if (!noteTextarea) return;
+  const len = noteTextarea.value.length;
+  let start = savedSelection ? savedSelection.start : len;
+  let end = savedSelection ? savedSelection.end : len;
+  start = Math.max(0, Math.min(start, len));
+  end = Math.max(start, Math.min(end, len));
+  const existing = noteTextarea.value;
+  liveInsertAnchor = {
+    prefix: existing.slice(0, start),
+    suffix: existing.slice(end),
+    start,
+    end,
+  };
+}
+
+function getLiveDisplayText() {
+  return liveFinalText + livePartialText;
+}
+
+function updateLiveTextareaInsert() {
+  if (!liveInsertAnchor || !noteTextarea) return;
+  const liveText = getLiveDisplayText();
+  noteTextarea.value = liveInsertAnchor.prefix + liveText + liveInsertAnchor.suffix;
+  updateNoteWordCount();
+  if (noteTitleDisplay) noteTitleDisplay.textContent = getEditorDisplayTitle();
+  const cursorPos = liveInsertAnchor.start + liveText.length;
+  try {
+    noteTextarea.setSelectionRange(cursorPos, cursorPos);
+  } catch { /* */ }
+}
+
+function revertLiveTextareaInsert() {
+  if (!liveInsertAnchor || !noteTextarea) return;
+  noteTextarea.value = liveInsertAnchor.prefix + liveInsertAnchor.suffix;
+  updateNoteWordCount();
+  if (noteTitleDisplay) noteTitleDisplay.textContent = getEditorDisplayTitle();
+}
+
+function resetLiveTranscriptionState() {
+  liveFinalText = '';
+  livePartialText = '';
+  liveInsertAnchor = null;
+}
+
+function setLiveRecordingUi(active, mode) {
+  recBtn.classList.toggle('recording', active && mode === 'manual');
+  if (instantTranscribeBtn) instantTranscribeBtn.classList.toggle('recording', active && mode === 'instant');
+}
+
+function updateLiveProcessingLabel(state) {
+  if (state === 'starting' || state === 'connecting') {
+    showProcessing(true, 'Soniox সংযুক্ত হচ্ছে…');
+    return;
+  }
+  if (state === 'recording') {
+    showProcessing(true, 'লাইভ শুনছে…');
+    return;
+  }
+  if (state === 'stopping') {
+    showProcessing(true, 'শেষ হচ্ছে…');
+    return;
+  }
+  if (!isRecording) showProcessing(false);
+}
+
+async function startLiveRecording(mode = 'manual') {
+  if (isProcessing || isRecording) return;
+  beginLiveInsertAnchor();
+  resetLiveTranscriptionState();
+
+  isProcessing = true;
+  recBtn.disabled = true;
+  doneBtn.disabled = true;
+  if (instantTranscribeBtn) instantTranscribeBtn.disabled = true;
+  showProcessing(true, 'Soniox প্রস্তুত হচ্ছে…');
+
+  try {
+    const client = await getSonioxClient();
+    liveRecording = client.realtime.record({
+      model: 'stt-rt-v5',
+      language_hints: ['bn'],
+      language_hints_strict: true,
+      enable_endpoint_detection: true,
+      auto_reconnect: true,
+    });
+
+    liveRecording.on('result', (result) => {
+      let partial = '';
+      for (const token of result.tokens) {
+        if (token.translation_status && token.translation_status !== 'none' && token.translation_status !== 'original') {
+          continue;
+        }
+        if (token.is_final) liveFinalText += token.text;
+        else partial += token.text;
+      }
+      livePartialText = partial;
+      updateLiveTextareaInsert();
+    });
+
+    liveRecording.on('state_change', ({ new_state }) => {
+      updateLiveProcessingLabel(new_state);
+      if (new_state === 'recording') {
+        isProcessing = false;
+        recBtn.disabled = false;
+        doneBtn.disabled = false;
+        if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+      }
+      if (['stopped', 'canceled', 'error', 'idle'].includes(new_state) && !isRecording) {
+        isProcessing = false;
+        recBtn.disabled = false;
+        doneBtn.disabled = segmentCount === 0;
+        if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+        showProcessing(false);
+      }
+    });
+
+    liveRecording.on('error', (err) => {
+      console.error('[Soniox]', err);
+      showToast(`Soniox ত্রুটি: ${(err?.message || String(err)).slice(0, 60)}`, 'error');
+    });
+
+    isRecording = true;
+    recordingMode = mode;
+    recordingStartedAt = Date.now();
+    setLiveRecordingUi(true, mode);
+    segmentsText.textContent = mode === 'instant'
+      ? 'লাইভ… আবার চাপলে বন্ধ'
+      : 'লাইভ ট্রান্সক্রাইব হচ্ছে…';
+    recTimer.classList.remove('hidden');
+    startTimer();
+  } catch (err) {
+    console.error('[Soniox]', err);
+    revertLiveTextareaInsert();
+    resetLiveTranscriptionState();
+    liveRecording = null;
+    showToast(`Soniox শুরু ব্যর্থ: ${(err.message || '').slice(0, 60)}`, 'error');
+    isProcessing = false;
+    recBtn.disabled = false;
+    doneBtn.disabled = segmentCount === 0;
+    if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+    showProcessing(false);
+  }
+}
+
+async function stopLiveRecording(options = {}) {
+  const { silent = false, cancel = false } = options;
+  if (!liveRecording && !isRecording) return;
+
+  isProcessing = true;
+  recBtn.disabled = true;
+  doneBtn.disabled = true;
+  if (instantTranscribeBtn) instantTranscribeBtn.disabled = true;
+
+  try {
+    if (liveRecording) {
+      if (cancel) liveRecording.cancel();
+      else await liveRecording.stop();
+    }
+  } catch (err) {
+    console.error('[Soniox stop]', err);
+    if (!cancel) showToast(`Soniox বন্ধ করতে সমস্যা: ${(err.message || '').slice(0, 50)}`, 'warning');
+  }
+
+  livePartialText = '';
+  if (cancel) {
+    revertLiveTextareaInsert();
+    resetLiveTranscriptionState();
+  } else {
+    updateLiveTextareaInsert();
+    const spoken = getLiveDisplayText().trim();
+    if (spoken) {
+      segmentCount += 1;
+      if (appPrefs.transcribeAutoSave !== false) saveCurrentNote(true);
+      if (!silent) showToast('✓ লাইভ ট্রান্সক্রিপশন সম্পন্ন', 'success');
+    } else if (!silent) {
+      revertLiveTextareaInsert();
+      resetLiveTranscriptionState();
+      showToast('কিছু শোনা যায়নি — আবার চেষ্টা করুন', 'warning');
+    }
+    resetLiveTranscriptionState();
+  }
+
+  liveRecording = null;
+  isRecording = false;
+  instantRecording = false;
+  recordingMode = '';
+  recordingStartedAt = 0;
+  setLiveRecordingUi(false);
+  stopTimer();
+  updateSegmentsUI();
+  clearSelection();
+
+  isProcessing = false;
+  recBtn.disabled = false;
+  if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+  showProcessing(false);
+}
+
 async function toggleRecording() {
   if (isProcessing) return;
+  if (isLiveTranscription()) {
+    if (isRecording) await stopLiveRecording();
+    else await startLiveRecording('manual');
+    return;
+  }
   if (isRecording) {
     stopSegment();
   } else {
@@ -1967,6 +2224,20 @@ function startSegment(mode = 'manual') {
 
 async function toggleInstantTranscribe() {
   if (isProcessing) return;
+  if (isLiveTranscription()) {
+    if (isRecording) {
+      if (Date.now() - recordingStartedAt < 700) {
+        await stopLiveRecording({ cancel: true, silent: true });
+        showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
+        return;
+      }
+      await stopLiveRecording();
+      return;
+    }
+    instantRecording = true;
+    await startLiveRecording('instant');
+    return;
+  }
   if (isRecording) {
     if (!instantRecording) {
       showToast('আগে চলমান রেকর্ডিং বন্ধ করুন', 'warning');
@@ -2036,6 +2307,25 @@ function updateSegmentsUI() {
 }
 
 function resetRecording() {
+  if (isLiveTranscription() && (isRecording || liveRecording)) {
+    if (liveRecording) {
+      try { liveRecording.cancel(); } catch {}
+      liveRecording = null;
+    }
+    revertLiveTextareaInsert();
+    resetLiveTranscriptionState();
+    isRecording = false;
+    instantRecording = false;
+    recordingMode = '';
+    recordingStartedAt = 0;
+    setLiveRecordingUi(false);
+    stopTimer();
+    isProcessing = false;
+    recBtn.disabled = false;
+    doneBtn.disabled = segmentCount === 0;
+    if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+    showProcessing(false);
+  }
   if (isRecording && mediaRecorder) { mediaRecorder.onstop = null; try { mediaRecorder.stop(); } catch {} }
   isRecording = false; audioChunks = []; segmentCount = 0;
   instantRecording = false;
@@ -2108,6 +2398,20 @@ function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
 ══════════════════════════════════════════════════ */
 async function onDone() {
   if (isProcessing) return;
+
+  if (isLiveTranscription()) {
+    if (isRecording) await stopLiveRecording();
+    if (segmentCount === 0) {
+      showToast('কোনো রেকর্ডিং নেই', 'warning');
+      return;
+    }
+    segmentCount = 0;
+    updateSegmentsUI();
+    clearSelection();
+    showToast('✓ সম্পন্ন', 'success');
+    return;
+  }
+
   if (audioChunks.length === 0 && !isRecording) { showToast('কোনো রেকর্ডিং নেই', 'warning'); return; }
 
   if (isRecording) {
@@ -2612,7 +2916,7 @@ on(editorFolderChip, 'click', () => {
 on(recBtn, 'click', toggleRecording);
 on(recBtn, 'pointerdown', () => {
   if (isProcessing || isRecording) return;
-  if (segmentCount !== 0) return;
+  if (!isLiveTranscription() && segmentCount !== 0) return;
   captureInsertRange();
 }, { capture: true });
 
@@ -2623,7 +2927,16 @@ on(instantTranscribeBtn, 'pointerdown', () => {
 }, { capture: true });
 on(doneBtn, 'click', onDone);
 
-on(clearRecBtn, 'click', () => {
+on(clearRecBtn, 'click', async () => {
+  if (isLiveTranscription()) {
+    if (isRecording || liveRecording) {
+      await stopLiveRecording({ cancel: true, silent: true });
+    }
+    segmentCount = 0;
+    updateSegmentsUI();
+    showToast('রেকর্ডিং মুছে গেছে');
+    return;
+  }
   if (isRecording) {
     mediaRecorder.onstop = null;
     try { mediaRecorder.stop(); } catch {}
