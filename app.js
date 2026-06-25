@@ -94,6 +94,7 @@ let liveFinalText    = '';
 let livePartialText  = '';
 /** @type {{ prefix: string, suffix: string, start: number, end: number } | null} */
 let liveInsertAnchor = null;
+let liveConnectTimeout = null;
 
 /* ══════════════════════════════════════════════════
    DOM রেফারেন্স
@@ -2035,12 +2036,22 @@ function revertLiveTextareaInsert() {
 function resetLiveTranscriptionState() {
   liveFinalText = '';
   livePartialText = '';
-  liveInsertAnchor = null;
+}
+
+function clearLiveConnectTimeout() {
+  if (liveConnectTimeout) {
+    clearTimeout(liveConnectTimeout);
+    liveConnectTimeout = null;
+  }
 }
 
 function setLiveRecordingUi(active, mode) {
   recBtn.classList.toggle('recording', active && mode === 'manual');
   if (instantTranscribeBtn) instantTranscribeBtn.classList.toggle('recording', active && mode === 'instant');
+}
+
+function isMicrophoneSupported() {
+  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
 }
 
 function updateLiveProcessingLabel(state) {
@@ -2049,7 +2060,9 @@ function updateLiveProcessingLabel(state) {
     return;
   }
   if (state === 'recording') {
-    showProcessing(true, 'লাইভ শুনছে…');
+    // লাইভ মোডে ওভারলে textarea ঢেকে ফেলে — কথা বলার সময় এডিটর দেখতে হবে
+    showProcessing(false);
+    if (segmentsText) segmentsText.textContent = 'লাইভ শুনছে — কথা বলুন';
     return;
   }
   if (state === 'stopping') {
@@ -2061,8 +2074,12 @@ function updateLiveProcessingLabel(state) {
 
 async function startLiveRecording(mode = 'manual') {
   if (isProcessing || isRecording) return;
-  beginLiveInsertAnchor();
+  if (!isMicrophoneSupported()) {
+    showToast('মাইক্রোফোন পাওয়া যায়নি — HTTPS সাইট থেকে খুলুন (localhost বা Vercel URL)', 'error');
+    return;
+  }
   resetLiveTranscriptionState();
+  beginLiveInsertAnchor();
 
   isProcessing = true;
   recBtn.disabled = true;
@@ -2096,10 +2113,21 @@ async function startLiveRecording(mode = 'manual') {
     liveRecording.on('state_change', ({ new_state }) => {
       updateLiveProcessingLabel(new_state);
       if (new_state === 'recording') {
+        clearLiveConnectTimeout();
         isProcessing = false;
         recBtn.disabled = false;
         doneBtn.disabled = false;
         if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+      }
+      if (new_state === 'error') {
+        clearLiveConnectTimeout();
+        isRecording = false;
+        isProcessing = false;
+        setLiveRecordingUi(false);
+        recBtn.disabled = false;
+        doneBtn.disabled = segmentCount === 0;
+        if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+        showProcessing(false);
       }
       if (['stopped', 'canceled', 'error', 'idle'].includes(new_state) && !isRecording) {
         isProcessing = false;
@@ -2112,8 +2140,21 @@ async function startLiveRecording(mode = 'manual') {
 
     liveRecording.on('error', (err) => {
       console.error('[Soniox]', err);
-      showToast(`Soniox ত্রুটি: ${(err?.message || String(err)).slice(0, 60)}`, 'error');
+      const msg = err?.message || String(err);
+      if (/getUserMedia|microphone|AudioUnavailable/i.test(msg)) {
+        showToast('মাইক্রোফোন পাওয়া যায়নি — HTTPS সাইট থেকে খুলুন ও অনুমতি দিন', 'error');
+      } else {
+        showToast(`Soniox ত্রুটি: ${msg.slice(0, 80)}`, 'error');
+      }
+      void stopLiveRecording({ cancel: true, silent: true });
     });
+
+    clearLiveConnectTimeout();
+    liveConnectTimeout = setTimeout(() => {
+      if (!liveRecording || !isRecording) return;
+      showToast('Soniox সংযোগ টাইমআউট — Vercel-এ SONIOX_API_KEY আছে কিনা দেখুন', 'error');
+      void stopLiveRecording({ cancel: true, silent: true });
+    }, 20000);
 
     isRecording = true;
     recordingMode = mode;
@@ -2142,6 +2183,7 @@ async function stopLiveRecording(options = {}) {
   const { silent = false, cancel = false } = options;
   if (!liveRecording && !isRecording) return;
 
+  clearLiveConnectTimeout();
   isProcessing = true;
   recBtn.disabled = true;
   doneBtn.disabled = true;
@@ -2307,6 +2349,7 @@ function updateSegmentsUI() {
 }
 
 function resetRecording() {
+  clearLiveConnectTimeout();
   if (isLiveTranscription() && (isRecording || liveRecording)) {
     if (liveRecording) {
       try { liveRecording.cancel(); } catch {}
