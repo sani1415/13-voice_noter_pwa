@@ -221,18 +221,72 @@
         <button class="clear-btn hidden" id="clear-rec-btn">মুছুন</button>
       </div>
       <div class="rec-controls">
-        <div class="rec-left">
-          <button id="rec-btn" aria-label="রেকর্ড শুরু করুন">
-            <span class="rec-icon">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
-                <rect x="8" y="2" width="8" height="14" rx="4" fill="white"/>
-                <path d="M5 12a7 7 0 0 0 14 0" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
-                <line x1="12" y1="19" x2="12" y2="22" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
-                <line x1="8" y1="22" x2="16" y2="22" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
-              </svg>
-            </span>
-            <span class="rec-ring"></span>
-          </button>
+        <div class="rec-left voice-combo-wrap">
+          <div class="voice-combo" id="voice-combo">
+            <div id="voice-mode-menu" class="voice-mode-menu hidden" role="menu" aria-label="ভয়েস ইনপুট মোড">
+              <p class="voice-mode-menu-title">ভয়েস মোড</p>
+              <button type="button" class="voice-mode-option" data-mode="live" role="menuitemradio">
+                <span class="voice-mode-option-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <path d="M4 12c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/>
+                    <path d="M4 17c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/>
+                  </svg>
+                </span>
+                <span class="voice-mode-option-body">
+                  <span class="voice-mode-option-title">লাইভ</span>
+                  <span class="voice-mode-option-sub">Soniox — সাথে সাথে লেখা</span>
+                </span>
+                <svg class="voice-mode-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button type="button" class="voice-mode-option" data-mode="record" role="menuitemradio">
+                <span class="voice-mode-option-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <rect x="9" y="2" width="6" height="11" rx="3"/>
+                    <path d="M5 11a7 7 0 0 0 14 0"/>
+                    <line x1="12" y1="18" x2="12" y2="21"/>
+                    <line x1="8" y1="21" x2="16" y2="21"/>
+                  </svg>
+                </span>
+                <span class="voice-mode-option-body">
+                  <span class="voice-mode-option-title">রেকর্ড</span>
+                  <span class="voice-mode-option-sub">খণ্ড রেখে শেষে ট্রান্সক্রাইব</span>
+                </span>
+                <svg class="voice-mode-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button type="button" class="voice-mode-option" data-mode="fast" role="menuitemradio">
+                <span class="voice-mode-option-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="5 3 19 12 5 21 5 3"/>
+                    <line x1="19" y1="5" x2="19" y2="19"/>
+                  </svg>
+                </span>
+                <span class="voice-mode-option-body">
+                  <span class="voice-mode-option-title">দ্রুত</span>
+                  <span class="voice-mode-option-sub">একবার রেকর্ড, তারপর ট্রান্সক্রাইব</span>
+                </span>
+                <svg class="voice-mode-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+            </div>
+            <div class="voice-mic-stack">
+              <button id="voice-main-btn" type="button" aria-label="রেকর্ড শুরু করুন">
+                <span class="rec-icon" aria-hidden="true">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
+                    <rect x="8" y="2" width="8" height="14" rx="4" fill="white"/>
+                    <path d="M5 12a7 7 0 0 0 14 0" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                    <line x1="12" y1="19" x2="12" y2="22" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                    <line x1="8" y1="22" x2="16" y2="22" stroke="white" stroke-width="2.2" stroke-linecap="round"/>
+                  </svg>
+                </span>
+                <span class="rec-ring"></span>
+              </button>
+              <button id="voice-mode-btn" type="button" aria-label="মোড বেছে নিন" aria-haspopup="menu" aria-expanded="false" aria-controls="voice-mode-menu">
+                <span id="voice-mode-label">রেকর্ড</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="18 15 12 9 6 15"/>
+                </svg>
+              </button>
+            </div>
+          </div>
         </div>
         <div class="rec-center">
           <span class="rec-timer hidden" id="rec-timer">0:00</span>
@@ -243,18 +297,7 @@
             শেষ
           </button>
         </div>
-        <div class="rec-right">
-          <button id="instant-transcribe-btn" aria-label="রেকর্ড করে সাথে সাথে ট্রান্সক্রাইব করুন" title="রেকর্ড + ট্রান্সক্রাইব">
-            <span class="instant-icon">
-              <svg width="27" height="27" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="8" y="2" width="8" height="12" rx="4" fill="currentColor"/>
-                <path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
-                <path d="M17.5 4.5 21 8l-3.5 3.5M21 8h-5" stroke="white" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </span>
-            <span class="rec-ring"></span>
-          </button>
-        </div>
+        <div class="rec-right" aria-hidden="true"></div>
       </div>
     </div>
   </div>
@@ -405,19 +448,6 @@
                 <input type="checkbox" id="pref-transcribe-autosave">
                 <span></span>
               </label>
-            </div>
-            <div class="settings-row settings-row-stack">
-              <div class="settings-row-main">
-                <span class="settings-icon">⚡</span>
-                <div>
-                  <p class="settings-row-title">ট্রান্সক্রিপশন মোড</p>
-                  <p class="settings-row-sub" id="transcription-mode-value">রেকর্ড পরে (Gemini)</p>
-                </div>
-              </div>
-              <div class="segmented-control segmented-control-compact" data-setting="transcriptionMode" role="group" aria-label="ট্রান্সক্রিপশন মোড">
-                <button type="button" data-value="batch">রেকর্ড পরে</button>
-                <button type="button" data-value="live">লাইভ</button>
-              </div>
             </div>
             <div class="settings-row settings-row-stack" id="transcription-model-row">
               <div class="settings-row-main">

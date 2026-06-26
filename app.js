@@ -53,7 +53,8 @@ const TRANSCRIPTION_MODELS = [
   'gemini-3.1-pro-preview',
 ];
 
-const TRANSCRIPTION_MODES = ['batch', 'live'];
+const VOICE_INPUT_MODES = ['live', 'record', 'fast'];
+const VOICE_MODE_LABELS = { live: 'লাইভ', record: 'রেকর্ড', fast: 'দ্রুত' };
 
 let appPrefs = {
   theme: 'system',
@@ -61,7 +62,6 @@ let appPrefs = {
   listDensity: 'comfortable',
   autoSaveDelay: 2000,
   transcribeAutoSave: true,
-  transcriptionMode: 'batch',
   transcriptionModel: 'gemini-2.5-flash',
   editorPaper: 'default',
   accent: 'blue',
@@ -95,6 +95,8 @@ let livePartialText  = '';
 /** @type {{ prefix: string, suffix: string, start: number, end: number } | null} */
 let liveInsertAnchor = null;
 let liveConnectTimeout = null;
+let voiceInputMode = 'record';
+let voiceModeMenuOpen = false;
 
 /* ══════════════════════════════════════════════════
    DOM রেফারেন্স
@@ -147,8 +149,12 @@ const noteTextarea        = $('note-textarea');
 const segmentsDots        = $('segments-dots');
 const segmentsText        = $('segments-text');
 const clearRecBtn         = $('clear-rec-btn');
-const recBtn              = $('rec-btn');
-const instantTranscribeBtn = $('instant-transcribe-btn');
+const bottomBar           = $('bottom-bar');
+const voiceCombo          = $('voice-combo');
+const voiceMainBtn        = $('voice-main-btn');
+const voiceModeBtn        = $('voice-mode-btn');
+const voiceModeMenu       = $('voice-mode-menu');
+const voiceModeLabel      = $('voice-mode-label');
 const doneBtn             = $('done-btn');
 const recTimer            = $('rec-timer');
 const replaceBanner       = $('replace-banner');
@@ -918,14 +924,12 @@ function loadPrefs() {
   const acc = get('vn-accent', 'blue');
   const lh = get('vn-line-height', 'normal');
   const ew = get('vn-editor-width', 'full');
-  const tm = get('vn-transcription-mode', 'batch');
   appPrefs = {
     theme: get('vn-theme', 'system'),
     fontSize: get('vn-font-size', 'medium'),
     listDensity: get('vn-list-density', 'comfortable'),
     autoSaveDelay: Number(get('vn-autosave-delay', '2000')) || 2000,
     transcribeAutoSave: get('vn-transcribe-autosave', 'true') !== 'false',
-    transcriptionMode: TRANSCRIPTION_MODES.includes(tm) ? tm : 'batch',
     transcriptionModel: TRANSCRIPTION_MODELS.includes(get('vn-transcription-model', '')) ? get('vn-transcription-model', '') : 'gemini-2.5-flash',
     editorPaper: ['default', 'cream', 'cool', 'oled'].includes(paper) ? paper : 'default',
     accent: ['blue', 'teal', 'violet'].includes(acc) ? acc : 'blue',
@@ -942,7 +946,6 @@ function savePref(key, value) {
     listDensity: 'vn-list-density',
     autoSaveDelay: 'vn-autosave-delay',
     transcribeAutoSave: 'vn-transcribe-autosave',
-    transcriptionMode: 'vn-transcription-mode',
     transcriptionModel: 'vn-transcription-model',
     editorPaper: 'vn-editor-paper',
     accent: 'vn-accent',
@@ -980,14 +983,6 @@ function syncSettingsControls() {
   });
   if (transcribeAutoSaveToggle) {
     transcribeAutoSaveToggle.checked = appPrefs.transcribeAutoSave !== false;
-  }
-  const modeValueEl = document.getElementById('transcription-mode-value');
-  if (modeValueEl) {
-    modeValueEl.textContent = appPrefs.transcriptionMode === 'live' ? 'লাইভ (Soniox)' : 'রেকর্ড পরে (Gemini)';
-  }
-  const modelRow = document.getElementById('transcription-model-row');
-  if (modelRow) {
-    modelRow.hidden = appPrefs.transcriptionMode === 'live';
   }
   const modelSelect = document.getElementById('pref-transcription-model');
   if (modelSelect) modelSelect.value = appPrefs.transcriptionModel || 'gemini-2.5-flash';
@@ -1965,8 +1960,66 @@ function captureInsertRange() {
 
 function clearSelection() { savedSelection = null; if (replaceBanner) replaceBanner.classList.add('hidden'); }
 
-function isLiveTranscription() {
-  return appPrefs.transcriptionMode === 'live';
+function loadVoiceInputMode() {
+  try {
+    const v = localStorage.getItem('vn-voice-input-mode');
+    if (VOICE_INPUT_MODES.includes(v)) voiceInputMode = v;
+  } catch { /* */ }
+}
+
+function persistVoiceInputMode() {
+  try { localStorage.setItem('vn-voice-input-mode', voiceInputMode); } catch { /* */ }
+}
+
+function closeVoiceModeMenu() {
+  voiceModeMenuOpen = false;
+  voiceModeMenu?.classList.add('hidden');
+  voiceModeBtn?.setAttribute('aria-expanded', 'false');
+}
+
+function toggleVoiceModeMenu() {
+  if (isRecording || isProcessing) return;
+  voiceModeMenuOpen = !voiceModeMenuOpen;
+  voiceModeMenu?.classList.toggle('hidden', !voiceModeMenuOpen);
+  voiceModeBtn?.setAttribute('aria-expanded', voiceModeMenuOpen ? 'true' : 'false');
+}
+
+function setVoiceInputMode(mode, { persist = true, closeMenu = true } = {}) {
+  if (!VOICE_INPUT_MODES.includes(mode) || isRecording || isProcessing) return;
+  voiceInputMode = mode;
+  if (persist) persistVoiceInputMode();
+  syncVoiceModeUi();
+  if (closeMenu) closeVoiceModeMenu();
+}
+
+function syncVoiceModeUi() {
+  voiceModeMenu?.querySelectorAll('.voice-mode-option').forEach(btn => {
+    const active = btn.dataset.mode === voiceInputMode;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-checked', active ? 'true' : 'false');
+  });
+  if (voiceModeLabel) voiceModeLabel.textContent = VOICE_MODE_LABELS[voiceInputMode] || voiceInputMode;
+  if (voiceMainBtn) {
+    voiceMainBtn.setAttribute('aria-label', `${VOICE_MODE_LABELS[voiceInputMode]} — ${isRecording ? 'বন্ধ করুন' : 'শুরু করুন'}`);
+  }
+  if (bottomBar) bottomBar.dataset.voiceMode = voiceInputMode;
+}
+
+function setVoiceRecordingUi(active) {
+  voiceMainBtn?.classList.toggle('recording', active);
+}
+
+function setVoiceControlsDisabled(disabled) {
+  if (voiceMainBtn) voiceMainBtn.disabled = disabled;
+  if (voiceModeBtn) voiceModeBtn.disabled = disabled || isRecording;
+}
+
+function isLiveSession() {
+  return recordingMode === 'live';
+}
+
+function isMicrophoneSupported() {
+  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
 }
 
 async function loadSonioxClientModule() {
@@ -2045,34 +2098,17 @@ function clearLiveConnectTimeout() {
   }
 }
 
-function setLiveRecordingUi(active, mode) {
-  recBtn.classList.toggle('recording', active && mode === 'manual');
-  if (instantTranscribeBtn) instantTranscribeBtn.classList.toggle('recording', active && mode === 'instant');
-}
-
-function isMicrophoneSupported() {
-  return !!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function');
-}
-
 function updateLiveProcessingLabel(state) {
-  if (state === 'starting' || state === 'connecting') {
-    showProcessing(true, 'Soniox সংযুক্ত হচ্ছে…');
-    return;
-  }
-  if (state === 'recording') {
-    // লাইভ মোডে ওভারলে textarea ঢেকে ফেলে — কথা বলার সময় এডিটর দেখতে হবে
-    showProcessing(false);
-    if (segmentsText) segmentsText.textContent = 'লাইভ শুনছে — কথা বলুন';
-    return;
-  }
-  if (state === 'stopping') {
-    showProcessing(true, 'শেষ হচ্ছে…');
-    return;
-  }
-  if (!isRecording) showProcessing(false);
+  const labels = {
+    starting: 'Soniox প্রস্তুত…',
+    connecting: 'সংযুক্ত হচ্ছে…',
+    recording: 'লাইভ শুনছে — কথা বলুন',
+    stopping: 'শেষ হচ্ছে…',
+  };
+  if (labels[state] && segmentsText) segmentsText.textContent = labels[state];
 }
 
-async function startLiveRecording(mode = 'manual') {
+async function startLiveRecording() {
   if (isProcessing || isRecording) return;
   if (!isMicrophoneSupported()) {
     showToast('মাইক্রোফোন পাওয়া যায়নি — HTTPS সাইট থেকে খুলুন (localhost বা Vercel URL)', 'error');
@@ -2080,12 +2116,9 @@ async function startLiveRecording(mode = 'manual') {
   }
   resetLiveTranscriptionState();
   beginLiveInsertAnchor();
-
-  isProcessing = true;
-  recBtn.disabled = true;
-  doneBtn.disabled = true;
-  if (instantTranscribeBtn) instantTranscribeBtn.disabled = true;
-  showProcessing(true, 'Soniox প্রস্তুত হচ্ছে…');
+  closeVoiceModeMenu();
+  voiceModeBtn.disabled = true;
+  if (segmentsText) segmentsText.textContent = 'লাইভ শুরু…';
 
   try {
     const client = await getSonioxClient();
@@ -2112,29 +2145,13 @@ async function startLiveRecording(mode = 'manual') {
 
     liveRecording.on('state_change', ({ new_state }) => {
       updateLiveProcessingLabel(new_state);
-      if (new_state === 'recording') {
-        clearLiveConnectTimeout();
-        isProcessing = false;
-        recBtn.disabled = false;
-        doneBtn.disabled = false;
-        if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
-      }
+      if (new_state === 'recording') clearLiveConnectTimeout();
       if (new_state === 'error') {
         clearLiveConnectTimeout();
         isRecording = false;
-        isProcessing = false;
-        setLiveRecordingUi(false);
-        recBtn.disabled = false;
-        doneBtn.disabled = segmentCount === 0;
-        if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
-        showProcessing(false);
-      }
-      if (['stopped', 'canceled', 'error', 'idle'].includes(new_state) && !isRecording) {
-        isProcessing = false;
-        recBtn.disabled = false;
-        doneBtn.disabled = segmentCount === 0;
-        if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
-        showProcessing(false);
+        setVoiceRecordingUi(false);
+        voiceModeBtn.disabled = false;
+        syncVoiceModeUi();
       }
     });
 
@@ -2157,12 +2174,10 @@ async function startLiveRecording(mode = 'manual') {
     }, 20000);
 
     isRecording = true;
-    recordingMode = mode;
+    recordingMode = 'live';
     recordingStartedAt = Date.now();
-    setLiveRecordingUi(true, mode);
-    segmentsText.textContent = mode === 'instant'
-      ? 'লাইভ… আবার চাপলে বন্ধ'
-      : 'লাইভ ট্রান্সক্রাইব হচ্ছে…';
+    setVoiceRecordingUi(true);
+    if (segmentsText) segmentsText.textContent = 'লাইভ… আবার চাপলে বন্ধ';
     recTimer.classList.remove('hidden');
     startTimer();
   } catch (err) {
@@ -2171,11 +2186,8 @@ async function startLiveRecording(mode = 'manual') {
     resetLiveTranscriptionState();
     liveRecording = null;
     showToast(`Soniox শুরু ব্যর্থ: ${(err.message || '').slice(0, 60)}`, 'error');
-    isProcessing = false;
-    recBtn.disabled = false;
-    doneBtn.disabled = segmentCount === 0;
-    if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
-    showProcessing(false);
+    voiceModeBtn.disabled = false;
+    syncVoiceModeUi();
   }
 }
 
@@ -2184,10 +2196,7 @@ async function stopLiveRecording(options = {}) {
   if (!liveRecording && !isRecording) return;
 
   clearLiveConnectTimeout();
-  isProcessing = true;
-  recBtn.disabled = true;
-  doneBtn.disabled = true;
-  if (instantTranscribeBtn) instantTranscribeBtn.disabled = true;
+  voiceModeBtn.disabled = true;
 
   try {
     if (liveRecording) {
@@ -2207,7 +2216,6 @@ async function stopLiveRecording(options = {}) {
     updateLiveTextareaInsert();
     const spoken = getLiveDisplayText().trim();
     if (spoken) {
-      segmentCount += 1;
       if (appPrefs.transcribeAutoSave !== false) saveCurrentNote(true);
       if (!silent) showToast('✓ লাইভ ট্রান্সক্রিপশন সম্পন্ন', 'success');
     } else if (!silent) {
@@ -2223,30 +2231,73 @@ async function stopLiveRecording(options = {}) {
   instantRecording = false;
   recordingMode = '';
   recordingStartedAt = 0;
-  setLiveRecordingUi(false);
+  setVoiceRecordingUi(false);
   stopTimer();
   updateSegmentsUI();
   clearSelection();
-
-  isProcessing = false;
-  recBtn.disabled = false;
-  if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
-  showProcessing(false);
+  voiceModeBtn.disabled = false;
+  syncVoiceModeUi();
 }
 
-async function toggleRecording() {
+async function toggleVoiceInput() {
   if (isProcessing) return;
-  if (isLiveTranscription()) {
-    if (isRecording) await stopLiveRecording();
-    else await startLiveRecording('manual');
+
+  if (isRecording) {
+    if (isLiveSession()) {
+      if (Date.now() - recordingStartedAt < 700) {
+        await stopLiveRecording({ cancel: true, silent: true });
+        showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
+        return;
+      }
+      await stopLiveRecording();
+      return;
+    }
+    if (recordingMode === 'instant') {
+      if (Date.now() - recordingStartedAt < 700) {
+        mediaRecorder.onstop = () => {
+          isRecording = false;
+          instantRecording = false;
+          recordingMode = '';
+          recordingStartedAt = 0;
+          audioChunks = [];
+          segmentCount = 0;
+          stopTimer();
+          setVoiceRecordingUi(false);
+          updateSegmentsUI();
+          syncVoiceModeUi();
+          showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
+        };
+        try { mediaRecorder.stop(); } catch {}
+        return;
+      }
+      instantRecording = false;
+      setVoiceRecordingUi(false);
+      await onDone();
+      return;
+    }
+    stopSegment();
     return;
   }
-  if (isRecording) {
-    stopSegment();
-  } else {
-    const ok = await ensureMic();
-    if (ok) startSegment('manual');
+
+  if (voiceInputMode === 'live') {
+    await startLiveRecording();
+    return;
   }
+
+  if (voiceInputMode === 'fast') {
+    audioChunks = [];
+    segmentCount = 0;
+    updateSegmentsUI();
+    const ok = await ensureMic();
+    if (!ok) return;
+    instantRecording = true;
+    startSegment('instant');
+    if (segmentsText) segmentsText.textContent = 'রেকর্ড হচ্ছে… আবার চাপলে ট্রান্সক্রাইব';
+    return;
+  }
+
+  const ok = await ensureMic();
+  if (ok) startSegment('manual');
 }
 
 function startSegment(mode = 'manual') {
@@ -2257,9 +2308,10 @@ function startSegment(mode = 'manual') {
   isRecording = true;
   recordingMode = mode;
   recordingStartedAt = Date.now();
-  recBtn.classList.toggle('recording', mode === 'manual');
-  if (instantTranscribeBtn) instantTranscribeBtn.classList.toggle('recording', mode === 'instant');
-  segmentsText.textContent = 'রেকর্ড হচ্ছে…';
+  setVoiceRecordingUi(true);
+  closeVoiceModeMenu();
+  voiceModeBtn.disabled = true;
+  segmentsText.textContent = mode === 'instant' ? 'রেকর্ড হচ্ছe…' : 'রেকর্ড হচ্ছে…';
   recTimer.classList.remove('hidden');
   startTimer();
 }
@@ -2294,7 +2346,7 @@ async function toggleInstantTranscribe() {
         audioChunks = [];
         segmentCount = 0;
         stopTimer();
-        recBtn.classList.remove('recording');
+        voiceMainBtn.classList.remove('recording');
         if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
         updateSegmentsUI();
         showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
@@ -2326,7 +2378,7 @@ function stopSegment() {
     recordingMode = '';
     recordingStartedAt = 0;
     stopTimer();
-    recBtn.classList.remove('recording');
+    voiceMainBtn.classList.remove('recording');
     instantRecording = false;
     if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
     updateSegmentsUI();
@@ -2364,9 +2416,8 @@ function resetRecording() {
     setLiveRecordingUi(false);
     stopTimer();
     isProcessing = false;
-    recBtn.disabled = false;
+    voiceMainBtn.disabled = false;
     doneBtn.disabled = segmentCount === 0;
-    if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
     showProcessing(false);
   }
   if (isRecording && mediaRecorder) { mediaRecorder.onstop = null; try { mediaRecorder.stop(); } catch {} }
@@ -2375,7 +2426,7 @@ function resetRecording() {
   recordingMode = '';
   recordingStartedAt = 0;
   stopTimer();
-  recBtn.classList.remove('recording');
+  voiceMainBtn.classList.remove('recording');
   if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
   recTimer.classList.add('hidden');
   updateSegmentsUI();
@@ -2466,7 +2517,7 @@ async function onDone() {
         recordingMode = '';
         recordingStartedAt = 0;
         stopTimer();
-        recBtn.classList.remove('recording');
+        voiceMainBtn.classList.remove('recording');
         if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
         resolve();
       };
@@ -2479,9 +2530,8 @@ async function onDone() {
 
 async function transcribeAndInsert() {
   isProcessing = true;
-  recBtn.disabled = true;
+  voiceMainBtn.disabled = true;
   doneBtn.disabled = true;
-  if (instantTranscribeBtn) instantTranscribeBtn.disabled = true;
   showProcessing(true, 'AI শুনছে…');
 
   try {
@@ -2549,8 +2599,7 @@ async function transcribeAndInsert() {
     showToast(`ত্রুটি: ${(err.message||'').slice(0,60)}`, 'error');
   } finally {
     isProcessing = false;
-    recBtn.disabled = false;
-    if (instantTranscribeBtn) instantTranscribeBtn.disabled = false;
+    voiceMainBtn.disabled = false;
     showProcessing(false);
   }
 }
@@ -2956,8 +3005,8 @@ on(editorFolderChip, 'click', () => {
   showMoveToFolderSheet();
 });
 
-on(recBtn, 'click', toggleRecording);
-on(recBtn, 'pointerdown', () => {
+on(voiceMainBtn, 'click', toggleRecording);
+on(voiceMainBtn, 'pointerdown', () => {
   if (isProcessing || isRecording) return;
   if (!isLiveTranscription() && segmentCount !== 0) return;
   captureInsertRange();
@@ -2987,7 +3036,7 @@ on(clearRecBtn, 'click', async () => {
     instantRecording = false;
     recordingMode = '';
     recordingStartedAt = 0;
-    if (recBtn) recBtn.classList.remove('recording');
+    if (voiceMainBtn) voiceMainBtn.classList.remove('recording');
     if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
     stopTimer();
   }

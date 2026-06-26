@@ -1354,18 +1354,148 @@ html[data-list-density="detailed"] .note-card-preview {
 .rec-left { justify-content: flex-start; }
 .rec-right { justify-content: flex-end; }
 
-/* রেকর্ড টাইমার */
-.rec-timer {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--rec);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.5px;
+/* ═══ ভয়েস কম্বো (মাইক + মোড মেনু) ═══ */
+.voice-combo-wrap {
+  justify-content: center;
 }
 
-/* বড় মাইক বাটন */
-#rec-btn,
-#instant-transcribe-btn {
+.voice-combo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.voice-mic-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.voice-mode-menu {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(272px, calc(100vw - 48px));
+  padding: 0 0 6px;
+  border-radius: 18px;
+  background: var(--card-bg);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+  z-index: 60;
+  overflow: hidden;
+  animation: voice-menu-pop 0.16s ease-out;
+}
+
+@keyframes voice-menu-pop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+.voice-mode-menu.hidden { display: none; }
+
+.voice-mode-menu-title {
+  margin: 0;
+  padding: 12px 16px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hint);
+  border-bottom: 1px solid var(--divider);
+}
+
+.voice-mode-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.voice-mode-option:last-child {
+  border-bottom: none;
+}
+
+.voice-mode-option:hover,
+.voice-mode-option:focus-visible {
+  background: color-mix(in srgb, var(--accent) 8%, var(--card-bg));
+}
+
+.voice-mode-option:active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--card-bg));
+}
+
+.voice-mode-option.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card-bg));
+}
+
+.voice-mode-option-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--card-bg));
+  color: var(--accent);
+}
+
+.voice-mode-option-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.voice-mode-option-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.voice-mode-option-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.25;
+}
+
+.voice-mode-option-sub {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--hint);
+}
+
+.voice-mode-option-check {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0;
+}
+
+.voice-mode-option.active .voice-mode-option-check {
+  opacity: 1;
+}
+
+#voice-main-btn {
   width: 78px;
   height: 78px;
   border-radius: 50%;
@@ -1380,14 +1510,62 @@ html[data-list-density="detailed"] .note-card-preview {
   transition: background 0.25s, transform 0.15s;
   box-shadow:
     0 6px 24px rgba(74, 144, 217, 0.55),
-    0 2px 8px rgba(0,0,0,0.2);
+    0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-#instant-transcribe-btn {
-  width: 66px;
-  height: 66px;
-  color: white;
-  background: var(--success);
+#voice-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 5px 12px;
+  min-height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+#voice-mode-btn svg {
+  width: 12px;
+  height: 12px;
+  opacity: 0.9;
+}
+
+#voice-mode-btn[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+#bottom-bar[data-voice-mode="live"] #done-btn,
+#bottom-bar[data-voice-mode="fast"] #done-btn {
+  display: none;
+}
+
+#voice-main-btn.recording {
+  background: var(--rec);
+  box-shadow:
+    0 6px 28px var(--rec-glow),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+#voice-main-btn.recording .rec-ring {
+  border-color: rgba(214, 48, 49, 0.4);
+  animation: ring-pulse 1.4s ease-out infinite;
+}
+
+#voice-main-btn:active { transform: scale(0.91); }
+#voice-main-btn:disabled,
+#voice-mode-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+#voice-mode-btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.18);
 }
 
 .rec-ring {
@@ -1399,29 +1577,21 @@ html[data-list-density="detailed"] .note-card-preview {
   pointer-events: none;
 }
 
-#rec-btn.recording,
-#instant-transcribe-btn.recording {
-  background: var(--rec);
-  box-shadow:
-    0 6px 28px var(--rec-glow),
-    0 2px 8px rgba(0,0,0,0.2);
-}
-
-#rec-btn.recording .rec-ring,
-#instant-transcribe-btn.recording .rec-ring {
-  border-color: rgba(214, 48, 49, 0.4);
-  animation: ring-pulse 1.4s ease-out infinite;
-}
-
 @keyframes ring-pulse {
   0%   { inset: -8px;  opacity: 0.9; }
   100% { inset: -20px; opacity: 0; }
 }
 
-#rec-btn:active,
-#instant-transcribe-btn:active { transform: scale(0.91); }
-#rec-btn:disabled,
-#instant-transcribe-btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+/* রেকর্ড টাইমার */
+.rec-timer {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--rec);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+/* বড় মাইক বাটন — legacy selectors removed; see #voice-main-btn */
 
 /* DONE বাটন */
 #done-btn {
@@ -2303,18 +2473,12 @@ body {
   box-shadow: 0 -8px 40px rgba(9, 15, 28, 0.28);
 }
 
-#rec-btn {
+#voice-main-btn {
   background: radial-gradient(circle at 35% 26%, var(--accent-lt), var(--accent) 58%, #1d5eaa);
   box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 40%, transparent), inset 0 2px 0 rgba(255, 255, 255, 0.3);
 }
 
-#instant-transcribe-btn {
-  background: radial-gradient(circle at 35% 26%, var(--success-lt), var(--success) 58%, #17613f);
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--success) 38%, transparent), inset 0 2px 0 rgba(255, 255, 255, 0.25);
-}
-
-#rec-btn.recording,
-#instant-transcribe-btn.recording {
+#voice-main-btn.recording {
   background: radial-gradient(circle at 35% 26%, #ff8c8c, var(--rec) 58%, #a91919);
 }
 
@@ -2367,24 +2531,25 @@ body {
   font-size: 10px;
 }
 
-#rec-btn {
+#voice-main-btn {
   width: 54px;
   height: 54px;
 }
 
-#instant-transcribe-btn {
-  width: 50px;
-  height: 50px;
-}
-
-#rec-btn svg {
+#voice-main-btn svg {
   width: 22px;
   height: 22px;
 }
 
-#instant-transcribe-btn svg {
-  width: 21px;
-  height: 21px;
+#voice-mode-btn {
+  padding: 4px 10px;
+  min-height: 26px;
+  font-size: 10px;
+}
+
+#voice-mode-btn svg {
+  width: 11px;
+  height: 11px;
 }
 
 .rec-ring {
