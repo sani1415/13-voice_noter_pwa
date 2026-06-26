@@ -4,8 +4,8 @@
   "description": "বাংলা ভয়েস নোট — AI ট্রান্সক্রিপশন",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#1a2744",
-  "theme_color": "#1a2744",
+  "background_color": "#f3ede2",
+  "theme_color": "#fbf6ee",
   "orientation": "portrait-primary",
   "lang": "bn",
   "icons": [

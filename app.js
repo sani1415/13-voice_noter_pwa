@@ -1497,7 +1497,7 @@ function addSectionLabel(text) {
 
 /* ── ফোল্ডার কার্ড ─────────────────────────────── */
 function buildFolderCard(id, folder, noteCount) {
-  const iconFill = NOTE_LABEL_BAR[folder.labelColor] || '#4a90d9';
+  const iconFill = NOTE_LABEL_BAR[folder.labelColor] || '#0b8276';
 
   const card = document.createElement('div');
   card.className = 'folder-card';
@@ -1767,7 +1767,7 @@ function showMoveToFolderSheet(fromListId) {
     btn.innerHTML = `
       ${iconHtml}
       <span>${label}</span>
-      ${isActive ? '<svg class="move-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4caf7d" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}`;
+      ${isActive ? '<svg class="move-check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0b8276" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}`;
 
     btn.addEventListener('click', () => {
       if (noteId) {
@@ -1801,7 +1801,7 @@ function showMoveToFolderSheet(fromListId) {
   for (const [fid, folder] of sortedFolders) {
     const sel = currentFid === normFolderId(fid);
     addItem(fid, folder.name,
-      `<svg width="20" height="20" viewBox="0 0 24 24" fill="${sel?'#4a90d9':'none'}" stroke="${sel?'#4a90d9':'currentColor'}" stroke-width="2" stroke-linecap="round">
+      `<svg width="20" height="20" viewBox="0 0 24 24" fill="${sel?'#0b8276':'none'}" stroke="${sel?'#0b8276':'currentColor'}" stroke-width="2" stroke-linecap="round">
          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
        </svg>`);
   }
@@ -1998,15 +1998,23 @@ function syncVoiceModeUi() {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-checked', active ? 'true' : 'false');
   });
-  if (voiceModeLabel) voiceModeLabel.textContent = VOICE_MODE_LABELS[voiceInputMode] || voiceInputMode;
+  const modeLabel = VOICE_MODE_LABELS[voiceInputMode] || voiceInputMode;
+  if (voiceModeLabel) voiceModeLabel.textContent = modeLabel;
+  if (voiceModeBtn) voiceModeBtn.setAttribute('aria-label', `মোড: ${modeLabel}. বদলাতে চাপুন`);
   if (voiceMainBtn) {
-    voiceMainBtn.setAttribute('aria-label', `${VOICE_MODE_LABELS[voiceInputMode]} — ${isRecording ? 'বন্ধ করুন' : 'শুরু করুন'}`);
+    voiceMainBtn.setAttribute('aria-label', `${modeLabel} — ${isRecording ? 'বন্ধ করুন' : 'শুরু করুন'}`);
   }
   if (bottomBar) bottomBar.dataset.voiceMode = voiceInputMode;
+  syncVoiceFloatUi();
+}
+
+function syncVoiceFloatUi() {
+  if (bottomBar) bottomBar.classList.toggle('voice-active', isRecording || segmentCount > 0);
 }
 
 function setVoiceRecordingUi(active) {
   voiceMainBtn?.classList.toggle('recording', active);
+  syncVoiceFloatUi();
 }
 
 function setVoiceControlsDisabled(disabled) {
@@ -2341,10 +2349,11 @@ function updateSegmentsUI() {
     doneBtn.disabled = true;
   } else {
     segmentsDots.textContent = '●'.repeat(Math.min(segmentCount, 10));
-    segmentsText.textContent = `${segmentCount}টি খণ্ড  —  আরও যোগ করুন বা DONE করুন`;
+    segmentsText.textContent = `${segmentCount}টি খণ্ড  —  আরও যোগ করুন বা শেষ চাপুন`;
     clearRecBtn.classList.remove('hidden');
     doneBtn.disabled = false;
   }
+  syncVoiceFloatUi();
 }
 
 function resetRecording() {

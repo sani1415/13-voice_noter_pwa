@@ -1,5 +1,5 @@
 /* Service Worker - Voice Notes PWA */
-const CACHE = 'voice-notes-v5';
+const CACHE = 'voice-notes-v6';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
