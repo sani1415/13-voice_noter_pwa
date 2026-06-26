@@ -6,6 +6,19 @@
 const TRANSCRIBE_ENDPOINT = '/api/transcribe';
 const SONIOX_KEY_ENDPOINT = '/api/soniox-key';
 const SONIOX_CLIENT_CDN = 'https://esm.sh/@soniox/client@2';
+const LOCAL_DEV_API_HINT = ' — লোকাল API নেই। টার্মিনালে: npx vercel dev';
+
+function localDevApiHint(status) {
+  if (status !== 404) return '';
+  const h = location.hostname;
+  if (h === 'localhost' || h === '127.0.0.1' || h === '[::1]') return LOCAL_DEV_API_HINT;
+  return '';
+}
+
+function micContextHint() {
+  if (window.isSecureContext) return '';
+  return ' — মাইক HTTPS বা localhost-এ কাজ করে (LAN IP-তে npx serve চালাবেন না)';
+}
 try { localStorage.removeItem('vn-api-key'); } catch { /* পুরনো leaked key cache থাকলে মুছে দাও */ }
 
 /* ══════════════════════════════════════════════════
@@ -97,6 +110,9 @@ let liveInsertAnchor = null;
 let liveConnectTimeout = null;
 let voiceInputMode = 'record';
 let voiceModeMenuOpen = false;
+let createFabMenuOpen = false;
+let cardActionOpen = false;
+let cardActionAnchor = null;
 
 /* ══════════════════════════════════════════════════
    DOM রেফারেন্স
@@ -129,14 +145,11 @@ const emptyState          = $('empty-state');
 const emptyIcon           = $('empty-icon');
 const emptyTitle          = $('empty-title');
 const emptyHint           = $('empty-hint');
-const newNoteBtn          = $('new-note-btn');
-const newFolderBtn        = $('new-folder-btn');
 const settingsBtn         = $('settings-btn');
 const rootSignOutBtn      = $('root-sign-out-btn');
 const folderBackBtn       = $('folder-back-btn');
 const folderNameDisplay   = $('folder-name-display');
 const renameFolderBtn     = $('rename-folder-btn');
-const newNoteInFolderBtn  = $('new-note-in-folder-btn');
 const folderSignOutBtn    = $('folder-sign-out-btn');
 const backBtn             = $('back-btn');
 const deleteNoteBtn       = $('delete-note-btn');
@@ -171,13 +184,14 @@ const folderFormSave      = $('folder-form-save');
 const folderFormClose     = $('folder-form-close');
 const folderFormCancel    = $('folder-form-cancel');
 
-// ফোল্ডার অপশন শিট
-const folderActionSheet   = $('folder-action-sheet');
-const folderActionTitle   = $('folder-action-title');
-const folderActionRename  = $('folder-action-rename');
-const folderActionLabel   = $('folder-action-label');
-const folderActionDelete  = $('folder-action-delete');
-const folderActionCancel  = $('folder-action-cancel');
+// ফোল্ডার অপশন পপওভার
+const cardActionPopover     = $('card-action-popover');
+const cardActionTitle       = $('card-action-title');
+const cardActionNotePanel   = $('card-action-note-panel');
+const cardActionFolderPanel = $('card-action-folder-panel');
+const folderActionRename    = $('folder-action-rename');
+const folderActionLabel     = $('folder-action-label');
+const folderActionDelete    = $('folder-action-delete');
 
 // Move-to-folder শিট
 const moveSheet           = $('move-sheet');
@@ -190,6 +204,9 @@ const sortSheetClose      = $('sort-sheet-close');
 const listSortBtn         = $('list-sort-btn');
 const folderSortBtn       = $('folder-sort-btn');
 const listSortLabel       = $('list-sort-label');
+const createFabWrap       = $('create-fab-wrap');
+const createFabBtn        = $('create-fab-btn');
+const createFabMenu       = $('create-fab-menu');
 const settingsBackBtn     = $('settings-back-btn');
 const settingsSortSummary = $('settings-sort-summary');
 const themeValue          = $('theme-value');
@@ -198,13 +215,11 @@ const editorPaperValue    = $('editor-paper-value');
 const accentValue         = $('accent-value');
 const listDensityValue    = $('list-density-value');
 const autoSaveDelayValue  = $('autosave-delay-value');
-const noteActionSheet     = $('note-action-sheet');
-const noteActionTitle     = $('note-action-title');
 const noteActionRename    = $('note-action-rename');
 const noteActionMove      = $('note-action-move');
 const noteActionDelete    = $('note-action-delete');
-const noteActionCancel    = $('note-action-cancel');
 const noteActionPin       = $('note-action-pin');
+const noteActionPinLabel  = $('note-action-pin-label');
 const noteActionTags      = $('note-action-tags');
 const noteActionLabel     = $('note-action-label');
 const noteFormModal       = $('note-form-modal');
@@ -1156,14 +1171,49 @@ function openNoteNameModal(targetId) {
 }
 function closeNoteNameModal() { noteFormModal.classList.add('hidden'); }
 
-function showNoteActionSheet(id) {
+function closeCardActionPopover() {
+  cardActionOpen = false;
+  cardActionAnchor = null;
+  cardActionPopover?.classList.add('hidden');
+}
+
+function positionCardActionPopover(anchorEl) {
+  if (!cardActionPopover || !anchorEl) return;
+  cardActionPopover.classList.remove('hidden');
+  cardActionPopover.style.visibility = 'hidden';
+  requestAnimationFrame(() => {
+    const rect = anchorEl.getBoundingClientRect();
+    const pop = cardActionPopover.getBoundingClientRect();
+    const m = 10;
+    let top = rect.bottom + 6;
+    let left = rect.right - pop.width;
+    if (top + pop.height > window.innerHeight - m) {
+      top = rect.top - pop.height - 6;
+    }
+    left = Math.max(m, Math.min(left, window.innerWidth - pop.width - m));
+    top = Math.max(m, Math.min(top, window.innerHeight - pop.height - m));
+    cardActionPopover.style.top = `${top}px`;
+    cardActionPopover.style.left = `${left}px`;
+    cardActionPopover.style.visibility = '';
+    cardActionOpen = true;
+  });
+}
+
+function showNoteActionSheet(id, anchorEl) {
   if (!notes[id] || !notes[id].content?.trim()) return;
-  activeNoteActionId   = id;
-  noteActionTitle.textContent = getListTitle(notes[id]);
-  if (noteActionPin) {
-    noteActionPin.textContent = notes[id].pinned ? '📌 পিন খুলুন' : '📌 পিন করুন';
+  if (cardActionOpen && cardActionAnchor === anchorEl) {
+    closeCardActionPopover();
+    return;
   }
-  noteActionSheet.classList.remove('hidden');
+  activeNoteActionId = id;
+  if (cardActionTitle) cardActionTitle.textContent = getListTitle(notes[id]);
+  if (noteActionPinLabel) {
+    noteActionPinLabel.textContent = notes[id].pinned ? 'পিন খুলুন' : 'পিন করুন';
+  }
+  cardActionNotePanel?.classList.remove('hidden');
+  cardActionFolderPanel?.classList.add('hidden');
+  cardActionAnchor = anchorEl;
+  positionCardActionPopover(anchorEl);
 }
 
 function toggleNotePinned(id) {
@@ -1236,7 +1286,7 @@ function setNoteLabelColor(id, colorKey) {
   persistNotes();
   sbUpsertNote(id);
   closeLabelModal();
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
+  closeCardActionPopover();
   renderNotesList();
   showToast(key ? 'লেবেল সেভ হয়েছে' : 'লেবেল সরানো হয়েছে', 'success');
 }
@@ -1248,7 +1298,7 @@ function setFolderLabelColor(id, colorKey) {
   persistFolders();
   sbUpsertFolder(id);
   closeLabelModal();
-  if (folderActionSheet) folderActionSheet.classList.add('hidden');
+  closeCardActionPopover();
   renderNotesList();
   showToast(key ? 'ফোল্ডারের রং সেভ হয়েছে' : 'রং সরানো হয়েছে', 'success');
 }
@@ -1360,6 +1410,36 @@ function updateListHeader() {
     rootHeader.classList.remove('hidden');
     folderHeader.classList.add('hidden');
   }
+  syncCreateFabMenu();
+}
+
+function closeCreateFabMenu() {
+  createFabMenuOpen = false;
+  createFabMenu?.classList.add('hidden');
+  createFabBtn?.setAttribute('aria-expanded', 'false');
+  createFabBtn?.classList.remove('open');
+}
+
+function toggleCreateFabMenu() {
+  createFabMenuOpen = !createFabMenuOpen;
+  if (createFabMenuOpen) syncCreateFabMenu();
+  createFabMenu?.classList.toggle('hidden', !createFabMenuOpen);
+  createFabBtn?.setAttribute('aria-expanded', createFabMenuOpen ? 'true' : 'false');
+  createFabBtn?.classList.toggle('open', createFabMenuOpen);
+}
+
+function syncCreateFabMenu() {
+  const folderOpt = createFabMenu?.querySelector('[data-create="folder"]');
+  if (folderOpt) folderOpt.classList.toggle('hidden', !!currentFolderId);
+}
+
+function handleCreateFabAction(action) {
+  closeCreateFabMenu();
+  if (action === 'note') {
+    openNewNote(currentFolderId || null);
+    return;
+  }
+  if (action === 'folder') openFolderFormModal('create');
 }
 
 /* ══════════════════════════════════════════════════
@@ -1396,6 +1476,7 @@ function scheduleListRerender() {
 }
 
 function renderNotesList() {
+  closeCardActionPopover();
   notesList.innerHTML = '';
   updateSearchClearVisibility();
 
@@ -1522,7 +1603,7 @@ function buildFolderCard(id, folder, noteCount) {
   card.querySelector('.folder-card-body').addEventListener('click', () => openFolder(id));
   card.querySelector('.folder-options-btn').addEventListener('click', e => {
     e.stopPropagation();
-    showFolderActionSheet(id);
+    showFolderActionSheet(id, e.currentTarget);
   });
   return card;
 }
@@ -1562,7 +1643,7 @@ function buildNoteCard(id, note) {
   card.querySelector('.note-card-body').addEventListener('click', () => openNote(id));
   card.querySelector('.note-options-btn').addEventListener('click', e => {
     e.stopPropagation();
-    showNoteActionSheet(id);
+    showNoteActionSheet(id, e.currentTarget);
   });
   return card;
 }
@@ -1629,28 +1710,35 @@ function updateEditorFolderChip() {
 }
 
 /* ══════════════════════════════════════════════════
-   ফোল্ডার অপশন শিট
+   ফোল্ডার অপশন পপওভার
 ══════════════════════════════════════════════════ */
-function showFolderActionSheet(id) {
-  if (!folderActionSheet || !folderActionTitle) return;
-  activeFolderActionId       = id;
-  folderActionTitle.textContent = folders[id]?.name || 'ফোল্ডার';
-  folderActionSheet.classList.remove('hidden');
+function showFolderActionSheet(id, anchorEl) {
+  if (!folders[id]) return;
+  if (cardActionOpen && cardActionAnchor === anchorEl) {
+    closeCardActionPopover();
+    return;
+  }
+  activeFolderActionId = id;
+  if (cardActionTitle) cardActionTitle.textContent = folders[id]?.name || 'ফোল্ডার';
+  cardActionFolderPanel?.classList.remove('hidden');
+  cardActionNotePanel?.classList.add('hidden');
+  cardActionAnchor = anchorEl;
+  positionCardActionPopover(anchorEl);
 }
 
 on(folderActionRename, 'click', () => {
-  if (folderActionSheet) folderActionSheet.classList.add('hidden');
+  closeCardActionPopover();
   openFolderFormModal('rename', activeFolderActionId);
 });
 
 on(folderActionLabel, 'click', () => {
   const id = activeFolderActionId;
-  if (folderActionSheet) folderActionSheet.classList.add('hidden');
+  closeCardActionPopover();
   if (id) openLabelModalForFolder(id);
 });
 
 on(folderActionDelete, 'click', async () => {
-  if (folderActionSheet) folderActionSheet.classList.add('hidden');
+  closeCardActionPopover();
   const name = folders[activeFolderActionId]?.name || 'ফোল্ডার';
   const count = Object.values(notes).filter(n => n.folderId === activeFolderActionId).length;
   const msg = count > 0
@@ -1668,8 +1756,35 @@ on(folderActionDelete, 'click', async () => {
   showToast('ফোল্ডার মুছে গেছে');
 });
 
-on(folderActionCancel, 'click', () => { if (folderActionSheet) folderActionSheet.classList.add('hidden'); });
-on(folderActionSheet, 'click', e => { if (e.target === folderActionSheet) folderActionSheet.classList.add('hidden'); });
+on(noteActionRename, 'click', () => {
+  closeCardActionPopover();
+  openNoteNameModal(activeNoteActionId);
+});
+on(noteActionMove, 'click', () => {
+  const id = activeNoteActionId;
+  closeCardActionPopover();
+  if (id) showMoveToFolderSheet(id);
+});
+on(noteActionDelete, 'click', () => {
+  const id = activeNoteActionId;
+  closeCardActionPopover();
+  if (id) deleteNote(id);
+});
+on(noteActionPin, 'click', () => {
+  const id = activeNoteActionId;
+  closeCardActionPopover();
+  if (id) toggleNotePinned(id);
+});
+on(noteActionTags, 'click', () => {
+  const id = activeNoteActionId;
+  closeCardActionPopover();
+  if (id) openTagsModalForNote(id);
+});
+on(noteActionLabel, 'click', () => {
+  const id = activeNoteActionId;
+  closeCardActionPopover();
+  if (id) openLabelModalForNote(id);
+});
 
 /* ══════════════════════════════════════════════════
    ফোল্ডার ফর্ম মোডাল (create / rename)
@@ -1866,38 +1981,6 @@ on(noteFormCancel, 'click', closeNoteNameModal);
 on(noteFormModal, 'click', e => { if (e.target === noteFormModal) closeNoteNameModal(); });
 on(noteNameInput, 'keydown', e => { if (e.key === 'Enter') noteFormSave?.click(); });
 
-on(noteActionRename, 'click', () => {
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
-  openNoteNameModal(activeNoteActionId);
-});
-on(noteActionMove, 'click', () => {
-  const id = activeNoteActionId;
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
-  if (id) showMoveToFolderSheet(id);
-});
-on(noteActionDelete, 'click', () => {
-  const id = activeNoteActionId;
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
-  if (id) deleteNote(id);
-});
-on(noteActionPin, 'click', () => {
-  const id = activeNoteActionId;
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
-  if (id) toggleNotePinned(id);
-});
-on(noteActionTags, 'click', () => {
-  const id = activeNoteActionId;
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
-  if (id) openTagsModalForNote(id);
-});
-on(noteActionLabel, 'click', () => {
-  const id = activeNoteActionId;
-  if (noteActionSheet) noteActionSheet.classList.add('hidden');
-  if (id) openLabelModalForNote(id);
-});
-on(noteActionCancel, 'click',  () => { if (noteActionSheet) noteActionSheet.classList.add('hidden'); });
-on(noteActionSheet, 'click',  e => { if (e.target === noteActionSheet) noteActionSheet.classList.add('hidden'); });
-
 on(listSearchInput, 'input', () => {
   updateSearchClearVisibility();
   scheduleListRerender();
@@ -1932,6 +2015,10 @@ function getSupportedMimeType() {
 }
 
 async function ensureMic() {
+  if (!window.isSecureContext) {
+    showToast(`মাইক্রোফোন এই ঠিকানায় কাজ করবে না${micContextHint()}`, 'error');
+    return false;
+  }
   if (micStream && micStream.active) return true;
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false });
@@ -2045,7 +2132,7 @@ async function getSonioxClient() {
       const res = await fetch(SONIOX_KEY_ENDPOINT, { method: 'POST' });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
-        throw new Error(e?.error || `Temporary key failed: HTTP ${res.status}`);
+        throw new Error((e?.error || `HTTP ${res.status}`) + localDevApiHint(res.status));
       }
       const data = await res.json();
       if (!data?.api_key) throw new Error('Soniox temporary API key পাওয়া যায়নি');
@@ -2517,7 +2604,7 @@ async function transcribeAndInsert() {
 
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      const hint = e?.hint ? ` — ${e.hint}` : '';
+      const hint = e?.hint ? ` — ${e.hint}` : localDevApiHint(res.status);
       throw new Error((e?.error || `HTTP ${res.status}`) + hint);
     }
 
@@ -2946,11 +3033,16 @@ on(transcriptionModelSelect, 'change', () => {
 /* ══════════════════════════════════════════════════
    ইভেন্ট বাইন্ডিং
 ══════════════════════════════════════════════════ */
-on(newNoteBtn, 'click', () => openNewNote(null));
-on(newFolderBtn, 'click', () => openFolderFormModal('create'));
 on(folderBackBtn, 'click', closeFolder);
 on(renameFolderBtn, 'click', () => { if (currentFolderId) openFolderFormModal('rename', currentFolderId); });
-on(newNoteInFolderBtn, 'click', () => openNewNote(currentFolderId));
+
+on(createFabBtn, 'click', (e) => {
+  e.stopPropagation();
+  toggleCreateFabMenu();
+});
+createFabMenu?.querySelectorAll('.create-fab-option').forEach(btn => {
+  on(btn, 'click', () => handleCreateFabAction(btn.dataset.create));
+});
 
 on(backBtn, 'click', () => {
   saveCurrentNote(true);
@@ -2980,10 +3072,29 @@ voiceModeMenu?.querySelectorAll('.voice-mode-option').forEach(btn => {
   on(btn, 'click', () => setVoiceInputMode(btn.dataset.mode));
 });
 document.addEventListener('click', (e) => {
+  if (cardActionOpen) {
+    if (!cardActionPopover?.contains(e.target) && !cardActionAnchor?.contains(e.target)) {
+      closeCardActionPopover();
+      if (e.target.closest('.note-card-body, .folder-card-body')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }
+  }
+}, true);
+
+document.addEventListener('click', (e) => {
+  if (createFabMenuOpen && !createFabWrap?.contains(e.target)) {
+    closeCreateFabMenu();
+  }
   if (!voiceModeMenuOpen) return;
   if (voiceCombo?.contains(e.target)) return;
   closeVoiceModeMenu();
 });
+
+on(notesList, 'scroll', () => {
+  if (cardActionOpen) closeCardActionPopover();
+}, { passive: true });
 
 on(doneBtn, 'click', onDone);
 
@@ -3254,7 +3365,7 @@ async function batchTranscribeOne(fileEntry) {
   });
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
-    throw new Error(e.error || `HTTP ${res.status}`);
+    throw new Error((e.error || `HTTP ${res.status}`) + localDevApiHint(res.status));
   }
   const { text } = await res.json();
   return text || '';
@@ -3367,6 +3478,7 @@ loadPrefs();
 applyPrefs();
 loadVoiceInputMode();
 syncVoiceModeUi();
+syncCreateFabMenu();
 try {
   const s = localStorage.getItem('vn-list-sort');
   if (s) listSort = s;

@@ -96,17 +96,6 @@
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
-        <button class="header-icon-btn" id="new-folder-btn" aria-label="নতুন ফোল্ডার">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
-          </svg>
-        </button>
-        <button class="header-icon-btn" id="new-note-btn" aria-label="নতুন নোট">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
       </div>
     </header>
 
@@ -136,11 +125,6 @@
           <path d="M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
-      <button class="header-icon-btn" id="new-note-in-folder-btn" aria-label="নতুন নোট">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-      </button>
     </header>
 
     <div class="list-search-wrap" id="list-search-wrap">
@@ -151,10 +135,42 @@
     <div id="empty-state" class="empty-state hidden">
       <div class="empty-icon" id="empty-icon">🎙️</div>
       <p class="empty-title" id="empty-title">কোনো নোট নেই</p>
-      <p class="empty-hint" id="empty-hint">উপরে + বাটন চাপুন<br>নতুন নোট তৈরি করতে</p>
+      <p class="empty-hint" id="empty-hint">নিচে ডানে + বাটন চাপুন<br>নতুন নোট বা ফোল্ডার তৈরি করতে</p>
     </div>
 
     <div id="notes-list" class="notes-list"></div>
+
+    <!-- ফ্লোটিং তৈরি বাটন (নোট / ফোল্ডার) -->
+    <div class="create-fab-wrap" id="create-fab-wrap">
+      <div id="create-fab-menu" class="create-fab-menu hidden" role="menu" aria-label="নতুন তৈরি করুন">
+        <button type="button" class="create-fab-option" data-create="note" role="menuitem">
+          <span class="create-fab-option-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+              <line x1="10" y1="9" x2="8" y2="9"/>
+            </svg>
+          </span>
+          <span class="create-fab-option-text">নতুন নোট</span>
+        </button>
+        <button type="button" class="create-fab-option" data-create="folder" role="menuitem">
+          <span class="create-fab-option-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+            </svg>
+          </span>
+          <span class="create-fab-option-text">নতুন ফোল্ডার</span>
+        </button>
+      </div>
+      <button type="button" id="create-fab-btn" class="create-fab-btn" aria-label="নতুন তৈরি করুন" aria-haspopup="menu" aria-expanded="false" aria-controls="create-fab-menu">
+        <svg class="create-fab-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
 
@@ -279,9 +295,9 @@
               </span>
               <span class="rec-ring"></span>
             </button>
-            <button id="voice-mode-btn" type="button" aria-label="মোড বেছে নিন" aria-haspopup="menu" aria-expanded="false" aria-controls="voice-mode-menu">
-              <span id="voice-mode-label" class="sr-only">রেকর্ড</span>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <button id="voice-mode-btn" type="button" aria-label="মোড বেছে নিন" aria-haspopup="menu" aria-expanded="false" aria-controls="voice-mode-menu">
+                <span id="voice-mode-label">রেকর্ড</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <polyline points="18 15 12 9 6 15"/>
               </svg>
             </button>
@@ -766,21 +782,67 @@
 
 
   <!-- ══════════════════════════════════════
-       ফোল্ডার অপশন শিট (rename / delete)
+       কার্ড অপশন (ফ্লোটিং পপওভার)
   ══════════════════════════════════════ -->
-  <div id="folder-action-sheet" class="modal-overlay hidden">
-    <div class="modal-card action-sheet-card">
-      <div class="action-sheet-title" id="folder-action-title">ফোল্ডার</div>
-      <button class="action-sheet-btn" id="folder-action-rename">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        নাম পরিবর্তন
+  <div id="card-action-popover" class="card-action-popover hidden" role="menu" aria-label="অপশন">
+    <p class="card-action-popover-title" id="card-action-title"></p>
+    <div id="card-action-note-panel">
+      <button type="button" class="card-action-option" id="note-action-rename" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </span>
+        <span class="card-action-option-text">নাম বদলান</span>
       </button>
-      <button type="button" class="action-sheet-btn" id="folder-action-label">রঙের লেবেল</button>
-      <button class="action-sheet-btn danger" id="folder-action-delete">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
-        ফোল্ডার মুছুন
+      <button type="button" class="card-action-option" id="note-action-move" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="16 2 12 6 8 2"/></svg>
+        </span>
+        <span class="card-action-option-text">ফোল্ডারে সরান</span>
       </button>
-      <button class="action-sheet-cancel" id="folder-action-cancel">বাতিল</button>
+      <button type="button" class="card-action-option" id="note-action-pin" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 17v5"/><path d="M9 3h6l1 7h4l-5 6v5H9v-5L4 10h4z"/></svg>
+        </span>
+        <span class="card-action-option-text" id="note-action-pin-label">পিন করুন</span>
+      </button>
+      <button type="button" class="card-action-option" id="note-action-tags" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        </span>
+        <span class="card-action-option-text">ট্যাগ ঠিক করুন</span>
+      </button>
+      <button type="button" class="card-action-option" id="note-action-label" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+        <span class="card-action-option-text">রঙের লেবেল</span>
+      </button>
+      <button type="button" class="card-action-option card-action-option--danger" id="note-action-delete" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+        </span>
+        <span class="card-action-option-text">মুছুন</span>
+      </button>
+    </div>
+    <div id="card-action-folder-panel" class="hidden">
+      <button type="button" class="card-action-option" id="folder-action-rename" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </span>
+        <span class="card-action-option-text">নাম পরিবর্তন</span>
+      </button>
+      <button type="button" class="card-action-option" id="folder-action-label" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+        </span>
+        <span class="card-action-option-text">রঙের লেবেল</span>
+      </button>
+      <button type="button" class="card-action-option card-action-option--danger" id="folder-action-delete" role="menuitem">
+        <span class="card-action-option-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+        </span>
+        <span class="card-action-option-text">ফোল্ডার মুছুন</span>
+      </button>
     </div>
   </div>
 
@@ -799,31 +861,6 @@
       <button type="button" class="action-sheet-btn sort-pick" data-sort="title_asc">শিরোনাম (ক → হ)</button>
       <button type="button" class="action-sheet-btn sort-pick" data-sort="title_desc">শিরোনাম (হ → ক)</button>
       <button type="button" class="action-sheet-cancel" id="sort-sheet-close">বন্ধ করুন</button>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════
-       নোট অ্যাকশন (নাম / সরান / মুছুন)
-  ══════════════════════════════════════ -->
-  <div id="note-action-sheet" class="modal-overlay hidden">
-    <div class="modal-card action-sheet-card">
-      <div class="action-sheet-title" id="note-action-title">নোট</div>
-      <button type="button" class="action-sheet-btn" id="note-action-rename">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-        নাম বদলান
-      </button>
-      <button type="button" class="action-sheet-btn" id="note-action-move">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><polyline points="16 2 12 6 8 2"/></svg>
-        অন্য ফোল্ডারে সরান
-      </button>
-      <button type="button" class="action-sheet-btn" id="note-action-pin">পিন করুন</button>
-      <button type="button" class="action-sheet-btn" id="note-action-tags">ট্যাগ ঠিক করুন</button>
-      <button type="button" class="action-sheet-btn" id="note-action-label">রঙের লেবেল</button>
-      <button type="button" class="action-sheet-btn danger" id="note-action-delete">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
-        মুছুন
-      </button>
-      <button type="button" class="action-sheet-cancel" id="note-action-cancel">বাতিল</button>
     </div>
   </div>
 

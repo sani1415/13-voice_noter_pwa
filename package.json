@@ -1,0 +1,11 @@
+{
+  "name": "voice-noter-pwa",
+  "private": true,
+  "scripts": {
+    "dev": "serve .",
+    "local": "vercel dev"
+  },
+  "devDependencies": {
+    "serve": "^14.2.4"
+  }
+}
