@@ -2316,60 +2316,6 @@ function startSegment(mode = 'manual') {
   startTimer();
 }
 
-async function toggleInstantTranscribe() {
-  if (isProcessing) return;
-  if (isLiveTranscription()) {
-    if (isRecording) {
-      if (Date.now() - recordingStartedAt < 700) {
-        await stopLiveRecording({ cancel: true, silent: true });
-        showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
-        return;
-      }
-      await stopLiveRecording();
-      return;
-    }
-    instantRecording = true;
-    await startLiveRecording('instant');
-    return;
-  }
-  if (isRecording) {
-    if (!instantRecording) {
-      showToast('আগে চলমান রেকর্ডিং বন্ধ করুন', 'warning');
-      return;
-    }
-    if (Date.now() - recordingStartedAt < 700) {
-      mediaRecorder.onstop = () => {
-        isRecording = false;
-        instantRecording = false;
-        recordingMode = '';
-        recordingStartedAt = 0;
-        audioChunks = [];
-        segmentCount = 0;
-        stopTimer();
-        voiceMainBtn.classList.remove('recording');
-        if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
-        updateSegmentsUI();
-        showToast('আরেকটু বেশি সময় ধরে রেকর্ড করুন', 'warning');
-      };
-      try { mediaRecorder.stop(); } catch {}
-      return;
-    }
-    instantRecording = false;
-    if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
-    await onDone();
-    return;
-  }
-
-  audioChunks = [];
-  segmentCount = 0;
-  updateSegmentsUI();
-  const ok = await ensureMic();
-  if (!ok) return;
-  instantRecording = true;
-  startSegment('instant');
-  segmentsText.textContent = 'রেকর্ড হচ্ছে… আবার চাপলে ট্রান্সক্রাইব হবে';
-}
-
 function stopSegment() {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
   mediaRecorder.onstop = () => {
@@ -2378,9 +2324,10 @@ function stopSegment() {
     recordingMode = '';
     recordingStartedAt = 0;
     stopTimer();
-    voiceMainBtn.classList.remove('recording');
     instantRecording = false;
-    if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+    setVoiceRecordingUi(false);
+    voiceModeBtn.disabled = false;
+    syncVoiceModeUi();
     updateSegmentsUI();
   };
   mediaRecorder.stop();
@@ -2402,7 +2349,7 @@ function updateSegmentsUI() {
 
 function resetRecording() {
   clearLiveConnectTimeout();
-  if (isLiveTranscription() && (isRecording || liveRecording)) {
+  if (voiceInputMode === 'live' && (isRecording || liveRecording)) {
     if (liveRecording) {
       try { liveRecording.cancel(); } catch {}
       liveRecording = null;
@@ -2413,12 +2360,14 @@ function resetRecording() {
     instantRecording = false;
     recordingMode = '';
     recordingStartedAt = 0;
-    setLiveRecordingUi(false);
+    setVoiceRecordingUi(false);
     stopTimer();
     isProcessing = false;
     voiceMainBtn.disabled = false;
+    voiceModeBtn.disabled = false;
     doneBtn.disabled = segmentCount === 0;
     showProcessing(false);
+    syncVoiceModeUi();
   }
   if (isRecording && mediaRecorder) { mediaRecorder.onstop = null; try { mediaRecorder.stop(); } catch {} }
   isRecording = false; audioChunks = []; segmentCount = 0;
@@ -2426,11 +2375,12 @@ function resetRecording() {
   recordingMode = '';
   recordingStartedAt = 0;
   stopTimer();
-  voiceMainBtn.classList.remove('recording');
-  if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+  setVoiceRecordingUi(false);
+  voiceModeBtn.disabled = false;
   recTimer.classList.add('hidden');
   updateSegmentsUI();
   clearSelection();
+  syncVoiceModeUi();
 }
 
 function startTimer() {
@@ -2493,7 +2443,7 @@ function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
 async function onDone() {
   if (isProcessing) return;
 
-  if (isLiveTranscription()) {
+  if (voiceInputMode === 'live') {
     if (isRecording) await stopLiveRecording();
     if (segmentCount === 0) {
       showToast('কোনো রেকর্ডিং নেই', 'warning');
@@ -2517,8 +2467,9 @@ async function onDone() {
         recordingMode = '';
         recordingStartedAt = 0;
         stopTimer();
-        voiceMainBtn.classList.remove('recording');
-        if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+        setVoiceRecordingUi(false);
+        voiceModeBtn.disabled = false;
+        syncVoiceModeUi();
         resolve();
       };
       mediaRecorder.stop();
@@ -3005,22 +2956,30 @@ on(editorFolderChip, 'click', () => {
   showMoveToFolderSheet();
 });
 
-on(voiceMainBtn, 'click', toggleRecording);
+on(voiceMainBtn, 'click', toggleVoiceInput);
 on(voiceMainBtn, 'pointerdown', () => {
   if (isProcessing || isRecording) return;
-  if (!isLiveTranscription() && segmentCount !== 0) return;
+  if (voiceInputMode !== 'live' && segmentCount !== 0) return;
   captureInsertRange();
 }, { capture: true });
 
-on(instantTranscribeBtn, 'click', toggleInstantTranscribe);
-on(instantTranscribeBtn, 'pointerdown', () => {
-  if (isProcessing || isRecording) return;
-  captureInsertRange();
-}, { capture: true });
+on(voiceModeBtn, 'click', (e) => {
+  e.stopPropagation();
+  toggleVoiceModeMenu();
+});
+voiceModeMenu?.querySelectorAll('.voice-mode-option').forEach(btn => {
+  on(btn, 'click', () => setVoiceInputMode(btn.dataset.mode));
+});
+document.addEventListener('click', (e) => {
+  if (!voiceModeMenuOpen) return;
+  if (voiceCombo?.contains(e.target)) return;
+  closeVoiceModeMenu();
+});
+
 on(doneBtn, 'click', onDone);
 
 on(clearRecBtn, 'click', async () => {
-  if (isLiveTranscription()) {
+  if (voiceInputMode === 'live') {
     if (isRecording || liveRecording) {
       await stopLiveRecording({ cancel: true, silent: true });
     }
@@ -3036,8 +2995,8 @@ on(clearRecBtn, 'click', async () => {
     instantRecording = false;
     recordingMode = '';
     recordingStartedAt = 0;
-    if (voiceMainBtn) voiceMainBtn.classList.remove('recording');
-    if (instantTranscribeBtn) instantTranscribeBtn.classList.remove('recording');
+    setVoiceRecordingUi(false);
+    syncVoiceModeUi();
     stopTimer();
   }
   audioChunks=[]; segmentCount=0; updateSegmentsUI(); showToast('রেকর্ডিং মুছে গেছে');
@@ -3397,6 +3356,8 @@ window.addEventListener('popstate', () => {
 ══════════════════════════════════════════════════ */
 loadPrefs();
 applyPrefs();
+loadVoiceInputMode();
+syncVoiceModeUi();
 try {
   const s = localStorage.getItem('vn-list-sort');
   if (s) listSort = s;
