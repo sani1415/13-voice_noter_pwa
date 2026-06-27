@@ -32,15 +32,15 @@
         </svg>
       </div>
       <h1 id="auth-gate-title" class="auth-title">Voice Notes</h1>
-      <p class="auth-lead">ইউজারনেম ও পিন দিয়ে লগইন। প্রথম অ্যাডমিন SQL দিয়ে তৈরি (ডিফল্ট: <strong>admin</strong> / পিন <strong>admin</strong>) — অবশ্যই পরে বদলান।</p>
-      <label class="modal-label vn-credential-label" for="auth-username">ইউজারনেম</label>
+      <p class="auth-lead">Supabase অ্যাকাউন্টে (ইমেইল + পাসওয়ার্ড) লগইন করুন। Voice Notes access থাকতে <code>vn_profiles</code>-এ entry লাগবে।</p>
+      <label class="modal-label vn-credential-label" for="auth-username">ইমেইল</label>
       <div class="key-input-wrap vn-credential-wrap auth-email-wrap">
-        <input type="text" id="auth-username" class="key-input vn-credential-input" inputmode="text" autocomplete="username" placeholder="admin" autocapitalize="none" spellcheck="false" />
+        <input type="email" id="auth-username" class="key-input vn-credential-input" inputmode="email" autocomplete="username" placeholder="you@example.com" autocapitalize="none" spellcheck="false" />
       </div>
-      <label class="modal-label vn-credential-label" for="auth-password" style="margin-top:12px;display:block">পিন</label>
+      <label class="modal-label vn-credential-label" for="auth-password" style="margin-top:12px;display:block">পাসওয়ার্ড</label>
       <div class="key-input-wrap vn-credential-wrap">
-        <input type="password" id="auth-password" class="key-input vn-credential-input" autocomplete="current-password" placeholder="পিন লিখুন" />
-        <button type="button" class="toggle-eye-btn vn-credential-toggle" id="auth-pin-toggle" aria-label="পিন দেখান বা লুকান">
+        <input type="password" id="auth-password" class="key-input vn-credential-input" autocomplete="current-password" placeholder="পাসওয়ার্ড" />
+        <button type="button" class="toggle-eye-btn vn-credential-toggle" id="auth-pin-toggle" aria-label="পাসওয়ার্ড দেখান বা লুকান">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
             <circle cx="12" cy="12" r="3"/>

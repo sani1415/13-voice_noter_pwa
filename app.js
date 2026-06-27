@@ -27,13 +27,12 @@ try { localStorage.removeItem('vn-api-key'); } catch { /* পুরনো leaked
 const SB_URL = 'https://iqjajofqaimnqvrxgdzc.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlxamFqb2ZxYWltbnF2cnhnZHpjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDM0NzYsImV4cCI6MjA4Njc3OTQ3Nn0.epEV-GGXUsJe-u4Aumx284qGPrCFZcuXFGN9qmtwwbM';
 
-let sb = null; // Supabase client (কাস্টম PIN ইউজার + RPC; Supabase Auth নয়)
-/** vn_app_users.id — লোকাল ক্যাশ কী */
+let sb = null;
+/** auth.users.id — লোকাল ক্যাশ কী */
 let appUserId = null;
 let appUsername = '';
 let appIsAdmin = false;
 let appMustChangePin = false;
-let sessionToken = null;
 
 const NOTE_LABEL_KEYS = ['', 'slate', 'blue', 'green', 'amber', 'rose', 'violet'];
 const NOTE_LABEL_BAR = {
@@ -495,24 +494,39 @@ function formatUserDate(iso) {
   }
 }
 
-function persistAppSessionFromLogin(data) {
-  if (!data || data.ok !== true) return;
-  sessionToken = data.session_token || null;
-  appUserId = data.user_id || null;
-  appUsername = data.username || '';
-  appIsAdmin = !!data.is_admin;
-  appMustChangePin = !!data.must_change_pin;
+function persistAppSessionFromLogin(_data) {
+  /* legacy — Supabase Auth ব্যবহার হয় */
+}
+
+async function loadVnProfile(userId) {
+  const { data, error } = await sb.from('vn_profiles')
+    .select('email, display_name, role, is_active')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data || !data.is_active) {
+    const err = new Error('no_vn_access');
+    throw err;
+  }
+  appUserId = userId;
+  appUsername = data.display_name || data.email || '';
+  appIsAdmin = data.role === 'admin';
+  appMustChangePin = false;
   try {
-    if (sessionToken) localStorage.setItem('vn-app-session-token', sessionToken);
-    if (appUserId) localStorage.setItem('vn-app-user-id', appUserId);
+    localStorage.setItem('vn-app-user-id', appUserId);
     localStorage.setItem('vn-app-username', appUsername);
     localStorage.setItem('vn-app-is-admin', appIsAdmin ? '1' : '0');
-    localStorage.setItem('vn-app-must-change-pin', appMustChangePin ? '1' : '0');
+    localStorage.removeItem('vn-app-session-token');
+    localStorage.removeItem('vn-app-must-change-pin');
   } catch { /* */ }
 }
 
+async function applySupabaseAuthSession(session) {
+  if (!session?.user?.id) throw new Error('no_session');
+  await loadVnProfile(session.user.id);
+}
+
 function clearAppSession() {
-  sessionToken = null;
   appUserId = null;
   appUsername = '';
   appIsAdmin = false;
@@ -594,60 +608,20 @@ function renderAdminUsers(users) {
 }
 
 async function loadAdminUsers() {
-  if (!sb || !sessionToken || !appIsAdmin || !adminUsersList) return;
-  adminUsersList.innerHTML = '<p class="settings-user-empty">ইউজার লোড হচ্ছে…</p>';
-  const { data, error } = await sb.rpc('vn_admin_list_users', { p_session_token: sessionToken });
-  if (error || !data || data.ok !== true) {
-    adminUsersList.innerHTML = `<p class="settings-user-empty settings-user-empty-error">${esc(error?.message || userRpcMessage(data?.error))}</p>`;
+  if (!adminUsersList) return;
+  if (!appIsAdmin) {
+    adminUsersList.innerHTML = '';
     return;
   }
-  renderAdminUsers(data.users);
+  adminUsersList.innerHTML = '<p class="settings-user-empty">নতুন Voice Notes user Supabase Dashboard → Authentication ও <code>vn_profiles</code> টেবিল থেকে যোগ করুন।</p>';
 }
 
-async function resetUserPin(user) {
-  if (!sb || !sessionToken || !user?.id) return;
-  const newPin = await requestPinResetValue(user.username);
-  if (newPin == null) return;
-  if (newPin.length < 4) {
-    showToast('পিন কমপক্ষে ৪ অক্ষর দিন', 'warning');
-    return;
-  }
-  const { data, error } = await sb.rpc('vn_admin_reset_user_pin', {
-    p_session_token: sessionToken,
-    p_user_id: user.id,
-    p_new_pin: newPin,
-  });
-  if (error || !data || data.ok !== true) {
-    showToast(error?.message || userRpcMessage(data?.error), 'error');
-    return;
-  }
-  showToast('পিন রিসেট হয়েছে — ইউজারকে লগইনে নতুন পিন বদলাতে হবে', 'success');
-  await loadAdminUsers();
+async function resetUserPin(_user) {
+  showToast('পিন রিসেট এখন Supabase Dashboard থেকে করুন', 'info');
 }
 
-async function toggleUserActive(user) {
-  if (!sb || !sessionToken || !user?.id) return;
-  const nextActive = user.is_active === false;
-  const action = nextActive ? 'চালু' : 'বন্ধ';
-  const ok = await appConfirm({
-    title: `ইউজার ${action} করবেন?`,
-    message: `"${user.username}" ইউজারটি ${action} করা হবে।`,
-    okText: action,
-    tone: nextActive ? 'normal' : 'danger',
-    icon: nextActive ? '✓' : '!',
-  });
-  if (!ok) return;
-  const { data, error } = await sb.rpc('vn_admin_set_user_active', {
-    p_session_token: sessionToken,
-    p_user_id: user.id,
-    p_is_active: nextActive,
-  });
-  if (error || !data || data.ok !== true) {
-    showToast(error?.message || userRpcMessage(data?.error), 'error');
-    return;
-  }
-  showToast(`ইউজার ${action} হয়েছে`, 'success');
-  await loadAdminUsers();
+async function toggleUserActive(_user) {
+  showToast('user active/inactive এখন vn_profiles.is_active থেকে করুন', 'info');
 }
 
 async function enterAppAfterSession() {
@@ -682,9 +656,9 @@ async function exitAppSession() {
   currentFolderId = null;
   pendingFolderId = null;
   resetLocalEditorAfterImport();
-  if (sb && sessionToken) {
+  if (sb) {
     try {
-      await sb.rpc('vn_pin_logout', { p_session_token: sessionToken });
+      await sb.auth.signOut();
     } catch { /* */ }
   }
   clearAppSession();
@@ -698,29 +672,33 @@ async function exitAppSession() {
 async function initSupabase() {
   try {
     if (!window.supabase?.createClient) throw new Error('supabase-js লোড হয়নি');
-    sb = window.supabase.createClient(SB_URL, SB_KEY);
-    const tok = localStorage.getItem('vn-app-session-token');
-    if (tok) {
-      sessionToken = tok;
-      const { data, error } = await sb.rpc('vn_pin_resolve_session', { p_session_token: tok });
-      if (error || !data || data.ok !== true) {
+    sb = window.supabase.createClient(SB_URL, SB_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true },
+    });
+    sb.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
         clearAppSession();
         showAuthGate();
-        setAuthSheetMessage('সেশন শেষ — আবার লগইন করুন', false);
+      }
+    });
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) {
+      try {
+        await applySupabaseAuthSession(session);
+        await enterAppAfterSession();
+        return;
+      } catch (err) {
+        await sb.auth.signOut();
+        clearAppSession();
+        showAuthGate();
+        setAuthSheetMessage(
+          err.message === 'no_vn_access'
+            ? 'এই অ্যাকাউন্টে Voice Notes access নেই'
+            : (err.message || 'লগইন প্রয়োজন'),
+          true,
+        );
         return;
       }
-      appUserId = data.user_id;
-      appUsername = data.username || '';
-      appIsAdmin = !!data.is_admin;
-      appMustChangePin = !!data.must_change_pin;
-      try {
-        localStorage.setItem('vn-app-user-id', appUserId || '');
-        localStorage.setItem('vn-app-username', appUsername);
-        localStorage.setItem('vn-app-is-admin', appIsAdmin ? '1' : '0');
-        localStorage.setItem('vn-app-must-change-pin', appMustChangePin ? '1' : '0');
-      } catch { /* */ }
-      await enterAppAfterSession();
-      return;
     }
     showAuthGate();
   } catch (err) {
@@ -732,15 +710,15 @@ async function initSupabase() {
 }
 
 async function pullFromSupabase() {
-  if (!sb || !sessionToken || !appUserId) return;
-  const { data, error } = await sb.rpc('vn_pull_notes_folders', {
-    p_session_token: sessionToken,
-  });
-  if (error) throw new Error(error.message);
-  if (!data || data.ok !== true) throw new Error(data?.error || 'pull_failed');
-
-  const nd = Array.isArray(data.notes) ? data.notes : [];
-  const fd = Array.isArray(data.folders) ? data.folders : [];
+  if (!sb || !appUserId) return;
+  const [notesRes, foldersRes] = await Promise.all([
+    sb.from('vn_notes').select('*').eq('owner_id', appUserId).order('updated_at', { ascending: false }),
+    sb.from('vn_folders').select('*').eq('owner_id', appUserId).order('created_at', { ascending: true }),
+  ]);
+  if (notesRes.error) throw new Error(notesRes.error.message);
+  if (foldersRes.error) throw new Error(foldersRes.error.message);
+  const nd = Array.isArray(notesRes.data) ? notesRes.data : [];
+  const fd = Array.isArray(foldersRes.data) ? foldersRes.data : [];
 
   notes = {};
   for (const n of nd) {
@@ -795,48 +773,41 @@ function notePayloadForRpc(id) {
   };
 }
 
+function notePayloadForDb(id) {
+  return { ...notePayloadForRpc(id), owner_id: appUserId };
+}
+
 function sbUpsertNote(id) {
-  if (!sb || !sessionToken || !appUserId || !notes[id]) return;
-  sb.rpc('vn_upsert_note_session', {
-    p_session_token: sessionToken,
-    p_note: notePayloadForRpc(id),
-  }).then(({ error }) => {
+  if (!sb || !appUserId || !notes[id]) return;
+  sb.from('vn_notes').upsert(notePayloadForDb(id), { onConflict: 'id' }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert note:', error.message);
   });
 }
 
 function sbDeleteNote(id) {
-  if (!sb || !sessionToken) return;
-  sb.rpc('vn_delete_note_session', {
-    p_session_token: sessionToken,
-    p_note_id: id,
-  }).then(({ error }) => {
+  if (!sb || !appUserId) return;
+  sb.from('vn_notes').delete().eq('id', id).eq('owner_id', appUserId).then(({ error }) => {
     if (error) console.warn('[Supabase] delete note:', error.message);
   });
 }
 
 function sbUpsertFolder(id) {
-  if (!sb || !sessionToken || !appUserId || !folders[id]) return;
+  if (!sb || !appUserId || !folders[id]) return;
   const f = folders[id];
-  sb.rpc('vn_upsert_folder_session', {
-    p_session_token: sessionToken,
-    p_folder: {
-      id,
-      name: f.name,
-      created_at: f.created,
-      label_color: f.labelColor || '',
-    },
-  }).then(({ error }) => {
+  sb.from('vn_folders').upsert({
+    id,
+    owner_id: appUserId,
+    name: f.name,
+    created_at: f.created,
+    label_color: f.labelColor || '',
+  }, { onConflict: 'id' }).then(({ error }) => {
     if (error) console.warn('[Supabase] upsert folder:', error.message);
   });
 }
 
 function sbDeleteFolder(id) {
-  if (!sb || !sessionToken) return;
-  sb.rpc('vn_delete_folder_session', {
-    p_session_token: sessionToken,
-    p_folder_id: id,
-  }).then(({ error }) => {
+  if (!sb || !appUserId) return;
+  sb.from('vn_folders').delete().eq('id', id).eq('owner_id', appUserId).then(({ error }) => {
     if (error) console.warn('[Supabase] delete folder:', error.message);
   });
 }
@@ -2857,123 +2828,46 @@ on(authSigninBtn, 'click', async () => {
     setAuthSheetMessage('ক্লায়েন্ট লোড হয়নি — পেজ রিফ্রেশ করুন', true);
     return;
   }
-  const username = (authUsername && authUsername.value ? authUsername.value : '').trim();
-  const pin = authPassword && authPassword.value ? authPassword.value : '';
-  if (!username) {
-    setAuthSheetMessage('ইউজারনেম লিখুন', true);
+  const email = (authUsername && authUsername.value ? authUsername.value : '').trim();
+  const password = authPassword && authPassword.value ? authPassword.value : '';
+  if (!email) {
+    setAuthSheetMessage('ইমেইল লিখুন', true);
     return;
   }
-  if (!pin || pin.length < 4) {
-    setAuthSheetMessage('পিন কমপক্ষে ৪ অক্ষর', true);
+  if (!password) {
+    setAuthSheetMessage('পাসওয়ার্ড লিখুন', true);
     return;
   }
   if (authSigninBtn) authSigninBtn.disabled = true;
   setAuthSheetMessage('লগইন…', false);
-  const { data, error } = await sb.rpc('vn_pin_login', {
-    p_username: username,
-    p_pin: pin,
-  });
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (authSigninBtn) authSigninBtn.disabled = false;
   if (error) {
-    setAuthSheetMessage(error.message, true);
+    setAuthSheetMessage(error.message === 'Invalid login credentials' ? 'ভুল ইমেইল বা পাসওয়ার্ড' : error.message, true);
     return;
   }
-  if (!data || data.ok !== true) {
+  try {
+    await applySupabaseAuthSession(data.session);
+  } catch (err) {
+    await sb.auth.signOut();
+    clearAppSession();
     setAuthSheetMessage(
-      data?.error === 'invalid_credentials' ? 'ভুল ইউজারনেম বা পিন' : userRpcMessage(data?.error || 'লগইন ব্যর্থ'),
+      err.message === 'no_vn_access' ? 'এই অ্যাকাউন্টে Voice Notes access নেই' : (err.message || 'লগইন ব্যর্থ'),
       true,
     );
     return;
   }
-  persistAppSessionFromLogin(data);
   setAuthSheetMessage('', false);
   showToast('লগইন হয়েছে', 'success');
   await enterAppAfterSession();
 });
 
 on(adminCreateUserBtn, 'click', async () => {
-  if (!sb || !sessionToken) {
-    setAdminCreateMessage('সেশন নেই', true);
-    return;
-  }
-  const nu = (adminNewUsername && adminNewUsername.value ? adminNewUsername.value : '').trim();
-  const np = adminNewPin && adminNewPin.value ? adminNewPin.value : '';
-  if (!nu) {
-    setAdminCreateMessage('নতুন ইউজারনেম লিখুন', true);
-    return;
-  }
-  if (!np || np.length < 4) {
-    setAdminCreateMessage('পিন কমপক্ষে ৪ অক্ষর', true);
-    return;
-  }
-  if (adminCreateUserBtn) adminCreateUserBtn.disabled = true;
-  setAdminCreateMessage('তৈরি হচ্ছে…', false);
-  const { data, error } = await sb.rpc('vn_admin_create_user', {
-    p_session_token: sessionToken,
-    p_new_username: nu,
-    p_new_pin: np,
-  });
-  if (adminCreateUserBtn) adminCreateUserBtn.disabled = false;
-  if (error) {
-    setAdminCreateMessage(error.message, true);
-    return;
-  }
-  if (!data || data.ok !== true) {
-    const err = data?.error || 'failed';
-    setAdminCreateMessage(
-      err === 'duplicate_username' ? 'এই ইউজারনেম আগে থেকেই আছে' : err,
-      true,
-    );
-    return;
-  }
-  if (adminNewUsername) adminNewUsername.value = '';
-  if (adminNewPin) adminNewPin.value = '';
-  setAdminCreateMessage('ইউজার তৈরি হয়েছে', false);
-  showToast(`ইউজার "${data.username}" যোগ হয়েছে`, 'success');
-  await loadAdminUsers();
+  setAdminCreateMessage('Supabase Dashboard → Authentication ও vn_profiles থেকে user যোগ করুন', true);
 });
 
 on(accountChangePinBtn, 'click', async () => {
-  if (!sb || !sessionToken) {
-    setAccountPinMessage('সেশন নেই', true);
-    return;
-  }
-  const currentPin = accountCurrentPin?.value || '';
-  const newPin = accountNewPin?.value || '';
-  const confirmPin = accountConfirmPin?.value || '';
-  if (!currentPin) {
-    setAccountPinMessage('বর্তমান পিন লিখুন', true);
-    return;
-  }
-  if (!newPin || newPin.length < 4) {
-    setAccountPinMessage('নতুন পিন কমপক্ষে ৪ অক্ষর', true);
-    return;
-  }
-  if (newPin !== confirmPin) {
-    setAccountPinMessage('নতুন পিন দুইবার একই নয়', true);
-    return;
-  }
-  if (accountChangePinBtn) accountChangePinBtn.disabled = true;
-  setAccountPinMessage('পিন পরিবর্তন হচ্ছে…', false);
-  const { data, error } = await sb.rpc('vn_change_own_pin', {
-    p_session_token: sessionToken,
-    p_current_pin: currentPin,
-    p_new_pin: newPin,
-  });
-  if (accountChangePinBtn) accountChangePinBtn.disabled = false;
-  if (error || !data || data.ok !== true) {
-    setAccountPinMessage(error?.message || userRpcMessage(data?.error), true);
-    return;
-  }
-  if (accountCurrentPin) accountCurrentPin.value = '';
-  if (accountNewPin) accountNewPin.value = '';
-  if (accountConfirmPin) accountConfirmPin.value = '';
-  appMustChangePin = false;
-  try { localStorage.setItem('vn-app-must-change-pin', '0'); } catch { /* */ }
-  updateCloudSyncSummary();
-  setAccountPinMessage('পিন পরিবর্তন হয়েছে', false);
-  showToast('পিন পরিবর্তন হয়েছে', 'success');
-  if (appIsAdmin) loadAdminUsers();
+  setAccountPinMessage('পাসওয়ার্ড Supabase Dashboard → Authentication থেকে বদলান', true);
 });
 
 on(adminRefreshUsersBtn, 'click', loadAdminUsers);
