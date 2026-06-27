@@ -44,8 +44,8 @@ module.exports = async function handler(req, res) {
       },
       body: JSON.stringify({
         usage_type: 'transcribe_websocket',
-        expires_in_seconds: 300,
-        max_session_duration_seconds: 600,
+        expires_in_seconds: 3600,
+        max_session_duration_seconds: 18000,
       }),
     });
   } catch (err) {
