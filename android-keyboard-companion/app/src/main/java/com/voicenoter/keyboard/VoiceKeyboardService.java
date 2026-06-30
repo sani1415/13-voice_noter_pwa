@@ -60,6 +60,15 @@ public class VoiceKeyboardService extends InputMethodService {
             mainHandler.postDelayed(this, 55);
         }
     };
+    private final Runnable voiceTimerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isRecording || isLiveActive) {
+                updateMicButtonAppearance();
+                mainHandler.postDelayed(this, 1000);
+            }
+        }
+    };
 
     private MediaRecorder recorder;
     private File audioFile;
@@ -73,10 +82,16 @@ public class VoiceKeyboardService extends InputMethodService {
     private Button langBnButton;
     private Button langEnButton;
     private Button langArButton;
+    private Button numbersToggleButton;
+    private boolean numbersMode = false;
     private SonioxLiveTranscriber liveTranscriber;
     private volatile boolean isRecording = false;
     private volatile boolean isLiveActive = false;
+    private long voiceActivityStartMs = 0;
     private int voiceSessionGeneration = 0;
+    private int liveStartOffset = 0;
+    private String liveLastText = "";
+    private String liveAnchorFinalBase = "";
     private boolean voiceOnlyMode = true;
     private String layoutLang = MainActivity.LANG_BN;
     private String voiceInputMode = MainActivity.MODE_RECORD;
@@ -218,13 +233,14 @@ public class VoiceKeyboardService extends InputMethodService {
         utilityRow.setGravity(Gravity.CENTER);
 
         utilityRow.addView(actionKey("Space", () -> commitText(" "), KEY_HEIGHT), weighted(KEY_HEIGHT, 1.2f));
-        ImageButton backspace = iconButton(R.drawable.ic_close_circle);
-        configureDeleteButton(backspace);
-        utilityRow.addView(backspace, weighted(KEY_HEIGHT, 0.65f));
+        numbersToggleButton = actionKey("123", this::toggleNumbersMode, KEY_HEIGHT);
+        utilityRow.addView(numbersToggleButton, weighted(KEY_HEIGHT, 0.65f));
         utilityRow.addView(actionKey(",", () -> commitText(", "), KEY_HEIGHT), weighted(KEY_HEIGHT, 0.7f));
         utilityRow.addView(actionKey("Enter", () -> commitText("\n"), KEY_HEIGHT), weighted(KEY_HEIGHT, 1f));
         utilityRow.addView(actionKey("All", this::selectAllText, KEY_HEIGHT), weighted(KEY_HEIGHT, 0.8f));
-        utilityRow.addView(actionKey("Next", () -> switchToNextInputMethod(false), KEY_HEIGHT), weighted(KEY_HEIGHT, 0.9f));
+        ImageButton nextKeyboard = iconButton(R.drawable.ic_globe);
+        nextKeyboard.setOnClickListener(v -> switchToNextInputMethod(false));
+        utilityRow.addView(nextKeyboard, weighted(KEY_HEIGHT, 0.65f));
         panel.addView(utilityRow, matchWidthWrap());
 
         letterContainer = new LinearLayout(this);
@@ -238,10 +254,40 @@ public class VoiceKeyboardService extends InputMethodService {
     private void rebuildLetterRows() {
         if (letterContainer == null) return;
         letterContainer.removeAllViews();
-        String[][] rows = layoutRowsFor(layoutLang);
+        String[][] rows = numbersMode ? numberRowsFor(layoutLang) : layoutRowsFor(layoutLang);
         for (String[] row : rows) {
             addTextRow(letterContainer, row);
         }
+    }
+
+    private String[][] numberRowsFor(String lang) {
+        if (MainActivity.LANG_BN.equals(lang)) {
+            return new String[][]{
+                {"\u09E7", "\u09E8", "\u09E9", "\u09EA", "\u09EB", "\u09EC", "\u09ED", "\u09EE", "\u09EF", "\u09E6"},
+            };
+        }
+        if (MainActivity.LANG_AR.equals(lang)) {
+            return new String[][]{
+                {"\u0661", "\u0662", "\u0663", "\u0664", "\u0665", "\u0666", "\u0667", "\u0668", "\u0669", "\u0660"},
+            };
+        }
+        return new String[][]{
+            {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
+        };
+    }
+
+    private void toggleNumbersMode() {
+        numbersMode = !numbersMode;
+        updateNumbersToggleStyle();
+        rebuildLetterRows();
+        setStatus(numbersMode ? "Numbers" : languageLabel(layoutLang) + " keyboard");
+    }
+
+    private void updateNumbersToggleStyle() {
+        if (numbersToggleButton == null) return;
+        numbersToggleButton.setText(numbersMode ? "ABC" : "123");
+        numbersToggleButton.setTypeface(numbersMode ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+        numbersToggleButton.setTextColor(numbersMode ? ACCENT : BTN_IDLE_TEXT);
     }
 
     private String[][] layoutRowsFor(String lang) {
@@ -302,7 +348,9 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void setLayoutLanguage(String lang) {
         layoutLang = lang;
+        numbersMode = false;
         updateLangButtonStyles();
+        updateNumbersToggleStyle();
         rebuildLetterRows();
         savePreferences();
         setStatus(languageLabel(lang) + " keyboard");
@@ -352,6 +400,7 @@ public class VoiceKeyboardService extends InputMethodService {
         stopLiveQuietly();
         cancelRecordingQuietly();
         mainHandler.removeCallbacks(repeatDeleteRunnable);
+        mainHandler.removeCallbacks(voiceTimerRunnable);
         executor.shutdownNow();
         super.onDestroy();
     }
@@ -379,11 +428,11 @@ public class VoiceKeyboardService extends InputMethodService {
     private void updateMicButtonAppearance() {
         if (micButton == null) return;
         if (isLiveActive) {
-            micButton.setText("Stop");
+            micButton.setText(formatVoiceElapsed());
             setRoundedButtonBackground(micButton, COLOR_LIVE);
             micButton.setTextColor(COLOR_ACTIVE_TEXT);
         } else if (isRecording) {
-            micButton.setText("Stop");
+            micButton.setText(formatVoiceElapsed());
             setRoundedButtonBackground(micButton, COLOR_RECORD);
             micButton.setTextColor(COLOR_ACTIVE_TEXT);
         } else {
@@ -391,6 +440,23 @@ public class VoiceKeyboardService extends InputMethodService {
             setRoundedButtonBackground(micButton, BTN_IDLE_BG);
             micButton.setTextColor(BTN_IDLE_TEXT);
         }
+    }
+
+    private String formatVoiceElapsed() {
+        if (voiceActivityStartMs <= 0) return "0:00";
+        long seconds = (System.currentTimeMillis() - voiceActivityStartMs) / 1000;
+        return (seconds / 60) + ":" + String.format("%02d", seconds % 60);
+    }
+
+    private void startVoiceTimer() {
+        voiceActivityStartMs = System.currentTimeMillis();
+        mainHandler.removeCallbacks(voiceTimerRunnable);
+        mainHandler.postDelayed(voiceTimerRunnable, 1000);
+    }
+
+    private void stopVoiceTimer() {
+        voiceActivityStartMs = 0;
+        mainHandler.removeCallbacks(voiceTimerRunnable);
     }
 
     private void setRoundedButtonBackground(Button button, int color) {
@@ -415,7 +481,9 @@ public class VoiceKeyboardService extends InputMethodService {
         }
 
         isLiveActive = true;
+        beginLiveAnchor();
         final int session = ++voiceSessionGeneration;
+        startVoiceTimer();
         updateMicButtonAppearance();
         setStatus("Live...");
 
@@ -425,7 +493,7 @@ public class VoiceKeyboardService extends InputMethodService {
             public void onTranscriptUpdate(String finalText, String partialText) {
                 mainHandler.post(() -> {
                     if (session != voiceSessionGeneration || !isLiveActive) return;
-                    updateLiveInsert(finalText + partialText);
+                    updateLiveInsert(finalText, partialText);
                 });
             }
 
@@ -440,6 +508,7 @@ public class VoiceKeyboardService extends InputMethodService {
                 mainHandler.post(() -> {
                     if (session != voiceSessionGeneration) return;
                     isLiveActive = false;
+                    stopVoiceTimer();
                     liveTranscriber = null;
                     updateMicButtonAppearance();
                 });
@@ -450,6 +519,7 @@ public class VoiceKeyboardService extends InputMethodService {
     private void stopLive() {
         if (!isLiveActive && liveTranscriber == null) return;
         isLiveActive = false;
+        stopVoiceTimer();
         finalizeLiveInsert();
         SonioxLiveTranscriber active = liveTranscriber;
         liveTranscriber = null;
@@ -460,6 +530,7 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void stopLiveQuietly() {
         isLiveActive = false;
+        stopVoiceTimer();
         finalizeLiveInsert();
         if (liveTranscriber != null) {
             liveTranscriber.stop();
@@ -467,18 +538,89 @@ public class VoiceKeyboardService extends InputMethodService {
         liveTranscriber = null;
     }
 
-    private void finalizeLiveInsert() {
+    private void beginLiveAnchor() {
         InputConnection ic = getCurrentInputConnection();
-        if (ic != null) {
-            ic.finishComposingText();
+        if (ic == null) {
+            liveStartOffset = 0;
+        } else {
+            CharSequence before = ic.getTextBeforeCursor(100000, 0);
+            liveStartOffset = before != null ? before.length() : 0;
         }
+        liveLastText = "";
+        liveAnchorFinalBase = "";
     }
 
-    private void updateLiveInsert(String text) {
+    private int getCursorOffset(InputConnection ic) {
+        CharSequence before = ic.getTextBeforeCursor(100000, 0);
+        return before != null ? before.length() : 0;
+    }
+
+    private boolean hasLiveCursorMoved(InputConnection ic) {
+        int cursor = getCursorOffset(ic);
+        if (liveLastText.isEmpty()) {
+            return cursor != liveStartOffset;
+        }
+        return cursor < liveStartOffset || cursor > liveStartOffset + liveLastText.length();
+    }
+
+    private void commitLiveAnchor(InputConnection ic, String finalText) {
+        int userCursor = getCursorOffset(ic);
+        int anchorStart = liveStartOffset;
+        int oldLiveLen = liveLastText.length();
+
+        ic.beginBatchEdit();
+        if (!liveLastText.isEmpty()) {
+            ic.setSelection(anchorStart, anchorStart + oldLiveLen);
+            ic.finishComposingText();
+        }
+        ic.endBatchEdit();
+
+        int newAnchor = userCursor;
+        if (oldLiveLen > 0 && userCursor >= anchorStart && userCursor <= anchorStart + oldLiveLen) {
+            newAnchor = anchorStart + oldLiveLen;
+        }
+        ic.setSelection(newAnchor, newAnchor);
+
+        liveAnchorFinalBase = finalText != null ? finalText : "";
+        liveStartOffset = newAnchor;
+        liveLastText = "";
+    }
+
+    private void finalizeLiveInsert() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic != null && !liveLastText.isEmpty()) {
+            int end = liveStartOffset + liveLastText.length();
+            ic.beginBatchEdit();
+            ic.setSelection(liveStartOffset, end);
+            ic.finishComposingText();
+            ic.setSelection(end, end);
+            ic.endBatchEdit();
+        }
+        liveLastText = "";
+        liveAnchorFinalBase = "";
+    }
+
+    private void updateLiveInsert(String finalText, String partialText) {
         if (!isLiveActive) return;
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
-        ic.setComposingText(text, 1);
+
+        String safeFinal = finalText != null ? finalText : "";
+        String safePartial = partialText != null ? partialText : "";
+
+        if (hasLiveCursorMoved(ic)) {
+            commitLiveAnchor(ic, safeFinal);
+        }
+
+        int baseLen = Math.min(liveAnchorFinalBase.length(), safeFinal.length());
+        String displayText = safeFinal.substring(baseLen) + safePartial;
+        if (displayText.isEmpty() && liveLastText.isEmpty()) return;
+
+        ic.beginBatchEdit();
+        ic.setSelection(liveStartOffset, liveStartOffset + liveLastText.length());
+        ic.setComposingText(displayText, 1);
+        liveLastText = displayText;
+        ic.endBatchEdit();
         setStatus("Live...");
     }
 
@@ -513,6 +655,7 @@ public class VoiceKeyboardService extends InputMethodService {
             recorder.start();
             isRecording = true;
             voiceSessionGeneration++;
+            startVoiceTimer();
             updateMicButtonAppearance();
             setStatus("Listening...");
         } catch (Exception e) {
@@ -624,6 +767,7 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void stopRecorderQuietly() {
         isRecording = false;
+        stopVoiceTimer();
         if (recorder != null) {
             try {
                 recorder.release();
