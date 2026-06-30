@@ -619,7 +619,7 @@ async function loadAdminUsers() {
     adminUsersList.innerHTML = '';
     return;
   }
-  adminUsersList.innerHTML = '<p class="settings-user-empty">নতুন Voice Notes user Supabase Dashboard → Authentication ও <code>vn_profiles</code> টেবিল থেকে যোগ করুন।</p>';
+  adminUsersList.innerHTML = '<p class="settings-user-empty">নতুন Voice Notyper user Supabase Dashboard → Authentication ও <code>vn_profiles</code> টেবিল থেকে যোগ করুন।</p>';
 }
 
 async function resetUserPin(_user) {
@@ -699,7 +699,7 @@ async function initSupabase() {
         showAuthGate();
         setAuthSheetMessage(
           err.message === 'no_vn_access'
-            ? 'এই অ্যাকাউন্টে Voice Notes access নেই'
+            ? 'এই অ্যাকাউন্টে Voice Notyper access নেই'
             : (err.message || 'লগইন প্রয়োজন'),
           true,
         );
@@ -2915,7 +2915,7 @@ on(authSigninBtn, 'click', async () => {
     await sb.auth.signOut();
     clearAppSession();
     setAuthSheetMessage(
-      err.message === 'no_vn_access' ? 'এই অ্যাকাউন্টে Voice Notes access নেই' : (err.message || 'লগইন ব্যর্থ'),
+      err.message === 'no_vn_access' ? 'এই অ্যাকাউন্টে Voice Notyper access নেই' : (err.message || 'লগইন ব্যর্থ'),
       true,
     );
     return;
