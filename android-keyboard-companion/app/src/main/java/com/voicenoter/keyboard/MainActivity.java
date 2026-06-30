@@ -49,7 +49,7 @@ public class MainActivity extends Activity {
         scrollView.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("Voice Noter Keyboard");
+        title.setText(getString(R.string.app_name));
         title.setTextSize(24);
         title.setTextColor(0xff202124);
         root.addView(title);

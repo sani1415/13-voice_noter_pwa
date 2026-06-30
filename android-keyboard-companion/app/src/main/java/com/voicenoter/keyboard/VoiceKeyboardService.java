@@ -15,6 +15,7 @@ import android.util.Base64;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -75,7 +76,7 @@ public class VoiceKeyboardService extends InputMethodService {
     private SonioxLiveTranscriber liveTranscriber;
     private volatile boolean isRecording = false;
     private volatile boolean isLiveActive = false;
-    private int liveDisplayedLength = 0;
+    private int voiceSessionGeneration = 0;
     private boolean voiceOnlyMode = true;
     private String layoutLang = MainActivity.LANG_BN;
     private String voiceInputMode = MainActivity.MODE_RECORD;
@@ -94,7 +95,53 @@ public class VoiceKeyboardService extends InputMethodService {
         keyboardPanel = buildKeyboardPanel();
         root.addView(keyboardPanel, matchWidthWrap());
         applyVoiceOnlyVisibility();
+        applyNavigationBarPadding(root);
         return root;
+    }
+
+    private void applyNavigationBarPadding(View root) {
+        root.setOnApplyWindowInsetsListener((view, insets) -> {
+            int bottom = 0;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+                bottom = bars.bottom;
+            } else {
+                bottom = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(view.getPaddingLeft(), view.getPaddingTop(), view.getPaddingRight(), bottom);
+            return insets;
+        });
+        root.requestApplyInsets();
+    }
+
+    @Override
+    public void onFinishInput() {
+        stopAllVoiceActivity(true);
+        super.onFinishInput();
+    }
+
+    @Override
+    public void onFinishInputView(boolean finishingInput) {
+        stopAllVoiceActivity(true);
+        super.onFinishInputView(finishingInput);
+    }
+
+    @Override
+    public void onWindowHidden() {
+        stopAllVoiceActivity(true);
+        super.onWindowHidden();
+    }
+
+    private void stopAllVoiceActivity(boolean cancelPendingWork) {
+        if (cancelPendingWork) {
+            voiceSessionGeneration++;
+        }
+        if (isLiveActive || liveTranscriber != null) {
+            stopLive();
+        }
+        if (isRecording) {
+            cancelRecordingQuietly();
+        }
     }
 
     private LinearLayout buildVoiceStrip() {
@@ -301,8 +348,9 @@ public class VoiceKeyboardService extends InputMethodService {
 
     @Override
     public void onDestroy() {
+        voiceSessionGeneration++;
         stopLiveQuietly();
-        stopRecorderQuietly();
+        cancelRecordingQuietly();
         mainHandler.removeCallbacks(repeatDeleteRunnable);
         executor.shutdownNow();
         super.onDestroy();
@@ -366,8 +414,8 @@ public class VoiceKeyboardService extends InputMethodService {
             return;
         }
 
-        liveDisplayedLength = 0;
         isLiveActive = true;
+        final int session = ++voiceSessionGeneration;
         updateMicButtonAppearance();
         setStatus("Live...");
 
@@ -375,17 +423,22 @@ public class VoiceKeyboardService extends InputMethodService {
         liveTranscriber.start(endpoint, layoutLang, new SonioxLiveTranscriber.Listener() {
             @Override
             public void onTranscriptUpdate(String finalText, String partialText) {
-                mainHandler.post(() -> updateLiveInsert(finalText + partialText));
+                mainHandler.post(() -> {
+                    if (session != voiceSessionGeneration || !isLiveActive) return;
+                    updateLiveInsert(finalText + partialText);
+                });
             }
 
             @Override
             public void onError(String message) {
+                if (session != voiceSessionGeneration) return;
                 postStatus(trimStatus(message));
             }
 
             @Override
             public void onStopped() {
                 mainHandler.post(() -> {
+                    if (session != voiceSessionGeneration) return;
                     isLiveActive = false;
                     liveTranscriber = null;
                     updateMicButtonAppearance();
@@ -396,33 +449,36 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void stopLive() {
         if (!isLiveActive && liveTranscriber == null) return;
+        isLiveActive = false;
+        finalizeLiveInsert();
         SonioxLiveTranscriber active = liveTranscriber;
         liveTranscriber = null;
-        isLiveActive = false;
         updateMicButtonAppearance();
         setStatus("Ready");
         if (active != null) active.stop();
     }
 
     private void stopLiveQuietly() {
+        isLiveActive = false;
+        finalizeLiveInsert();
         if (liveTranscriber != null) {
             liveTranscriber.stop();
         }
-        isLiveActive = false;
         liveTranscriber = null;
-        liveDisplayedLength = 0;
+    }
+
+    private void finalizeLiveInsert() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic != null) {
+            ic.finishComposingText();
+        }
     }
 
     private void updateLiveInsert(String text) {
+        if (!isLiveActive) return;
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
-        ic.beginBatchEdit();
-        if (liveDisplayedLength > 0) {
-            ic.deleteSurroundingText(liveDisplayedLength, 0);
-        }
-        ic.commitText(text, 1);
-        liveDisplayedLength = text.length();
-        ic.endBatchEdit();
+        ic.setComposingText(text, 1);
         setStatus("Live...");
     }
 
@@ -456,15 +512,18 @@ public class VoiceKeyboardService extends InputMethodService {
             recorder.prepare();
             recorder.start();
             isRecording = true;
+            voiceSessionGeneration++;
             updateMicButtonAppearance();
             setStatus("Listening...");
         } catch (Exception e) {
-            stopRecorderQuietly();
+            cancelRecordingQuietly();
             setStatus("Mic error");
         }
     }
 
     private void stopAndTranscribe() {
+        if (!isRecording) return;
+        final int session = voiceSessionGeneration;
         File finishedFile = audioFile;
         try {
             if (recorder != null) {
@@ -472,18 +531,28 @@ public class VoiceKeyboardService extends InputMethodService {
             }
         } catch (RuntimeException e) {
             setStatus("Too short");
-            stopRecorderQuietly();
+            cancelRecordingQuietly();
             return;
         }
 
         stopRecorderQuietly();
         setStatus("Transcribing...");
 
-        executor.execute(() -> transcribe(finishedFile));
+        executor.execute(() -> transcribe(finishedFile, session));
     }
 
-    private void transcribe(File file) {
+    private void cancelRecordingQuietly() {
+        voiceSessionGeneration++;
+        stopRecorderQuietly();
+        if (audioFile != null) {
+            audioFile.delete();
+            audioFile = null;
+        }
+    }
+
+    private void transcribe(File file, int session) {
         try {
+            if (session != voiceSessionGeneration) return;
             if (file == null || !file.exists() || file.length() == 0) {
                 postStatus("No audio");
                 return;
@@ -529,6 +598,7 @@ public class VoiceKeyboardService extends InputMethodService {
             }
 
             mainHandler.post(() -> {
+                if (session != voiceSessionGeneration) return;
                 commitText(text);
                 setStatus("Inserted");
             });

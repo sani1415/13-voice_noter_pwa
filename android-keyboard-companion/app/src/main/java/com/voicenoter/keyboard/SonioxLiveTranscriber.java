@@ -68,6 +68,7 @@ public class SonioxLiveTranscriber {
 
     public void stop() {
         if (!running.getAndSet(false)) return;
+        listener = null;
         stopAudioCapture();
         executor.execute(this::closeWebSocketAndNotify);
     }

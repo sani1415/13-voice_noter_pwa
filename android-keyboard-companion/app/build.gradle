@@ -10,8 +10,14 @@ android {
         applicationId "com.voicenoter.keyboard"
         minSdk 23
         targetSdk 35
-        versionCode 8
-        versionName "0.3.2"
+        versionCode 10
+        versionName "0.3.4"
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            output.outputFileName = "Voice-Keyboard-${variant.versionName}-${variant.buildType.name}.apk"
+        }
     }
 }
 
