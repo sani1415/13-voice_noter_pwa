@@ -7,14 +7,32 @@ const ALLOWED_MODELS = [
   'gemini-3-flash-preview',
   'gemini-3.1-pro-preview',
 ];
-const TRANSCRIBE_PROMPT = [
-  'Transcribe only the clear human speech in the audio.',
-  'The expected language is Bangla/Bengali.',
-  'Do not translate, summarize, explain, or add any extra text.',
-  'Add only natural Bengali punctuation where appropriate.',
-  'If there is no clear speech, background noise only, silence, or unintelligible audio, return exactly: __NO_SPEECH__',
-  'Return only the transcript text or __NO_SPEECH__.',
-].join('\n');
+const LANGUAGE_CONFIG = {
+  bn: {
+    label: 'Bangla/Bengali',
+    punctuation: 'Bengali',
+  },
+  en: {
+    label: 'English',
+    punctuation: 'English',
+  },
+  ar: {
+    label: 'Arabic',
+    punctuation: 'Arabic',
+  },
+};
+
+function buildTranscribePrompt(language) {
+  const config = LANGUAGE_CONFIG[language] || LANGUAGE_CONFIG.bn;
+  return [
+    'Transcribe only the clear human speech in the audio.',
+    `The expected language is ${config.label}.`,
+    'Do not translate, summarize, explain, or add any extra text.',
+    `Add only natural ${config.punctuation} punctuation where appropriate.`,
+    'If there is no clear speech, background noise only, silence, or unintelligible audio, return exactly: __NO_SPEECH__',
+    'Return only the transcript text or __NO_SPEECH__.',
+  ].join('\n');
+}
 
 function cleanTranscript(text) {
   const value = (text || '').trim();
@@ -26,7 +44,7 @@ function cleanTranscript(text) {
 
   const leakedPromptMarkers = [
     'Transcribe only the clear human speech',
-    'The expected language is Bangla',
+    'The expected language is',
     'Do not translate',
     'Return only the transcript',
     'এই অডিওতে বাংলায় কথা বলা হয়েছে',
@@ -98,6 +116,10 @@ module.exports = async function handler(req, res) {
   const mimeType = typeof payload.mimeType === 'string' ? payload.mimeType : 'audio/webm';
   const requestedModel = typeof payload.model === 'string' ? payload.model : '';
   const geminiModel = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : DEFAULT_GEMINI_MODEL;
+  const requestedLanguage = typeof payload.language === 'string' ? payload.language.trim().toLowerCase() : '';
+  const language = Object.prototype.hasOwnProperty.call(LANGUAGE_CONFIG, requestedLanguage)
+    ? requestedLanguage
+    : 'bn';
 
   if (!audio && !fileUri) {
     sendJson(res, 400, { error: 'audio অথবা fileUri আবশ্যক' });
@@ -117,7 +139,7 @@ module.exports = async function handler(req, res) {
       contents: [{
         parts: [
           audioPart,
-          { text: TRANSCRIBE_PROMPT },
+          { text: buildTranscribePrompt(language) },
         ],
       }],
     }),

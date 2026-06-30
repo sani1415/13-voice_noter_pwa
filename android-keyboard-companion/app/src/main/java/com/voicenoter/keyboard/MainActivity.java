@@ -11,6 +11,8 @@ import android.os.Bundle;
 import android.provider.Settings;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -20,6 +22,14 @@ import android.widget.Toast;
 public class MainActivity extends Activity {
     static final String PREFS = "voice_noter_keyboard";
     static final String KEY_ENDPOINT = "endpoint";
+    static final String KEY_VOICE_ONLY = "voice_only_mode";
+    static final String KEY_LAYOUT_LANG = "layout_lang";
+    static final String LANG_BN = "bn";
+    static final String LANG_EN = "en";
+    static final String LANG_AR = "ar";
+    static final String KEY_VOICE_INPUT_MODE = "voice_input_mode";
+    static final String MODE_RECORD = "record";
+    static final String MODE_LIVE = "live";
     static final String DEFAULT_ENDPOINT = "https://notes.idarah786.com";
     private static final int REQ_AUDIO = 1001;
 
@@ -71,6 +81,14 @@ public class MainActivity extends Activity {
         enable.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)));
         root.addView(enable);
 
+        CheckBox voiceOnly = new CheckBox(this);
+        voiceOnly.setText("Start in voice-only mode (minimal bar, no letter keys)");
+        voiceOnly.setChecked(prefs.getBoolean(KEY_VOICE_ONLY, true));
+        voiceOnly.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) ->
+            prefs.edit().putBoolean(KEY_VOICE_ONLY, isChecked).apply()
+        );
+        root.addView(voiceOnly);
+
         Button switchKeyboard = new Button(this);
         switchKeyboard.setText("Switch keyboard");
         switchKeyboard.setOnClickListener(v -> {
@@ -80,7 +98,7 @@ public class MainActivity extends Activity {
         root.addView(switchKeyboard);
 
         TextView footer = new TextView(this);
-        footer.setText("The keyboard sends recorded audio to {endpoint}/api/transcribe and inserts the returned Bangla text into the current field.");
+        footer.setText("Hold Voice to switch Live mode. Live uses Soniox; record uses /api/transcribe. Voice-only mode shows a slim bar with BN/EN/AR.");
         footer.setTextSize(13);
         footer.setPadding(0, dp(18), 0, 0);
         root.addView(footer);

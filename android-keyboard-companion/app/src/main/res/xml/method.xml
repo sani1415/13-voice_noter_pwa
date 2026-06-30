@@ -6,4 +6,12 @@
         android:imeSubtypeLocale="bn_BD"
         android:imeSubtypeMode="keyboard"
         android:label="@string/keyboard_name" />
+    <subtype
+        android:imeSubtypeLocale="en_US"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/keyboard_name_en" />
+    <subtype
+        android:imeSubtypeLocale="ar"
+        android:imeSubtypeMode="keyboard"
+        android:label="@string/keyboard_name_ar" />
 </input-method>
