@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.voicenoter.keyboard",
+      "sha256_cert_fingerprints": [
+        "AD:C6:EF:E1:68:8E:AA:C2:CD:27:C8:59:D5:56:15:12:A1:3C:DF:3F:34:5D:F1:12:E9:AA:9D:CC:DF:6B:4E:C2"
+      ]
+    }
+  }
+]

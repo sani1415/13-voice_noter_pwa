@@ -23,4 +23,6 @@ android {
 
 dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    // Trusted Web Activity host for the bundled Voice Notes PWA.
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
 }

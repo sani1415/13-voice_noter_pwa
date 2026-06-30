@@ -732,6 +732,19 @@ html[data-theme="dark"] .create-fab-menu {
 .header-icon-btn.delete-btn { color: #6a7a9a; }
 .header-icon-btn.delete-btn:active { color: #e74c3c; background: rgba(231,76,60,0.15); }
 
+/* ভয়েস কিবোর্ড সেটিংস — অ্যাপের ভেতরে বিশেষ accent চিপ হিসেবে আলাদা দেখায় */
+.header-kbd-btn {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  min-width: 38px;
+}
+.header-kbd-btn:active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.header-kbd-btn.hidden { display: none; }
+
 .save-status {
   font-size: 12px;
   font-weight: 600;

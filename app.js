@@ -148,6 +148,7 @@ const emptyIcon           = $('empty-icon');
 const emptyTitle          = $('empty-title');
 const emptyHint           = $('empty-hint');
 const settingsBtn         = $('settings-btn');
+const keyboardSettingsBtn = $('keyboard-settings-btn');
 const rootSignOutBtn      = $('root-sign-out-btn');
 const folderBackBtn       = $('folder-back-btn');
 const folderNameDisplay   = $('folder-name-display');
@@ -2807,6 +2808,31 @@ function initSettingsTabs() {
 }
 
 on(settingsBtn, 'click', openSettingsPage);
+
+// ── ভয়েস কিবোর্ড সেটিংস ─────────────────────────────────────────────
+// এই PWA যখন Android কম্প্যানিয়ন অ্যাপের (Trusted Web Activity) ভেতরে চলে,
+// তখনই হেডারে কিবোর্ড আইকনটা দেখাই। আইকনে ট্যাপ করলে intent:// লিংকের
+// মাধ্যমে অ্যাপের নেটিভ কিবোর্ড-সেটিংস স্ক্রিন খোলে।
+const VN_KEYBOARD_SETTINGS_INTENT =
+  'intent://keyboard/#Intent;scheme=voicenoter;package=com.voicenoter.keyboard;end';
+
+function isInsideAndroidApp() {
+  try {
+    const params = new URLSearchParams(location.search);
+    if (params.get('app') === 'android') localStorage.setItem('vn-android-app', '1');
+  } catch { /* localStorage বন্ধ থাকতে পারে */ }
+  let flagged = false;
+  try { flagged = localStorage.getItem('vn-android-app') === '1'; } catch { /* */ }
+  const fromAppReferrer = (document.referrer || '').startsWith('android-app://com.voicenoter.keyboard');
+  return flagged || fromAppReferrer;
+}
+
+if (isInsideAndroidApp()) {
+  keyboardSettingsBtn?.classList.remove('hidden');
+}
+on(keyboardSettingsBtn, 'click', () => {
+  window.location.href = VN_KEYBOARD_SETTINGS_INTENT;
+});
 on(settingsBackBtn, 'click', () => { if (screenSettings?.classList.contains('active')) history.back(); });
 
 on(backupExportBtn, 'click', exportVoiceNotesBackup);
