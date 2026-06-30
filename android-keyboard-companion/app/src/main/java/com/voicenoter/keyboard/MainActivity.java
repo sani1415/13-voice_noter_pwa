@@ -30,6 +30,9 @@ public class MainActivity extends Activity {
     static final String KEY_VOICE_INPUT_MODE = "voice_input_mode";
     static final String KEY_THEME = "kbd_theme";
     static final String KEY_ENABLED_LANGS = "enabled_langs";
+    static final String KEY_PRESETS = "preset_messages";
+
+    static final String DEFAULT_PRESETS = "[]";
 
     static final String LANG_BN = "bn";
     static final String LANG_EN = "en";

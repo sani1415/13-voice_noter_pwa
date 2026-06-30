@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.inputmethodservice.InputMethodService;
@@ -20,12 +21,15 @@ import android.view.WindowInsets;
 import android.widget.PopupWindow;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -45,13 +49,17 @@ public class VoiceKeyboardService extends InputMethodService {
     private static final int UTILITY_KEY_HEIGHT = 28;
     private static final int STRIP_HEIGHT = 40;
     private static final int COLOR_RECORD = 0xff2e7d32;
+    private static final int COLOR_RECORD_SOFT = 0xffe8f5e9;
     private static final int COLOR_LIVE = 0xffc62828;
+    private static final int COLOR_LIVE_SOFT = 0xffffebee;
     private static final int COLOR_ACTIVE_TEXT = 0xffffffff;
     private static final int BTN_CORNER_RADIUS_DP = 8;
+    private static final int MAX_PRESETS = 24;
 
     // Sentinel keys used inside letter rows to flip between the main and "more" page.
-    private static final String TOK_MORE = "MORE";
-    private static final String TOK_BACK = "BACK";
+    private static final String TOK_MORE = "\u0001MORE";
+    private static final String TOK_BACK = "\u0001BACK";
+    private static final String TOK_DELETE = "\u0001DELETE";
 
     private static final String[] BN_VOWEL_ROW = {
         "\u0985", "\u0986", "\u0987", "\u0988", "\u0989", "\u098A",
@@ -97,18 +105,24 @@ public class VoiceKeyboardService extends InputMethodService {
     private MediaRecorder recorder;
     private File audioFile;
     private TextView status;
-    private Button micButton;
+    private TextView micLabel;
+    private ImageView micModeIcon;
+    private TextView micHoldHint;
     private ImageButton expandArrowButton;
     private ImageButton stripGlobeButton;
+    private ImageButton stripPresetButton;
     private View stripDeleteKey;
     private View stripMicKeyWrap;
-    private View utilityDeleteKey;
+    private View utilityMoreKey;
     private View karToggleKey;
     private LinearLayout bnRow1Layout;
     private LinearLayout keyboardPanel;
+    private LinearLayout presetComposeBar;
+    private EditText presetComposeInput;
     private LinearLayout letterContainer;
     private java.util.List<String> enabledLangs = new java.util.ArrayList<>();
     private boolean morePage = false;
+    private boolean presetComposeActive = false;
     private String appliedConfigSig = "";
     private SonioxLiveTranscriber liveTranscriber;
     private volatile boolean isRecording = false;
@@ -194,6 +208,8 @@ public class VoiceKeyboardService extends InputMethodService {
     public void onWindowHidden() {
         dismissGlobePopup();
         dismissSymbolPopup();
+        dismissPresetPopup();
+        hidePresetCompose();
         stopAllVoiceActivity(true);
         super.onWindowHidden();
     }
@@ -224,6 +240,10 @@ public class VoiceKeyboardService extends InputMethodService {
         stripUndoButton.setOnClickListener(v -> undoText());
         strip.addView(stripUndoButton, weighted(STRIP_HEIGHT, 0.65f));
 
+        stripPresetButton = stripIconButton(R.drawable.ic_presets);
+        stripPresetButton.setOnClickListener(this::togglePresetPopup);
+        strip.addView(stripPresetButton, weighted(STRIP_HEIGHT, 0.55f));
+
         expandArrowButton = iconButton(R.drawable.ic_arrow_up);
         expandArrowButton.setOnClickListener(v -> toggleKeyboardPanel());
         strip.addView(expandArrowButton, weighted(STRIP_HEIGHT, 0.5f));
@@ -240,25 +260,66 @@ public class VoiceKeyboardService extends InputMethodService {
         status.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         strip.addView(status, weighted(STRIP_HEIGHT, 1f));
 
-        micButton = new Button(this);
-        micButton.setAllCaps(false);
-        micButton.setTextSize(10);
-        micButton.setTypeface(Typeface.DEFAULT_BOLD);
-        micButton.setPadding(dp(4), dp(1), dp(4), dp(1));
-        micButton.setSingleLine(true);
-        micButton.setMaxLines(1);
-        micButton.setEllipsize(TextUtils.TruncateAt.END);
-        micButton.setOnClickListener(v -> toggleVoiceInput());
-        micButton.setOnLongClickListener(v -> {
+        stripMicKeyWrap = buildMicKeyView();
+        strip.addView(stripMicKeyWrap, weighted(STRIP_HEIGHT, 0.45f));
+
+        return strip;
+    }
+
+    private View buildMicKeyView() {
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.setMinimumHeight(dp(STRIP_HEIGHT));
+        wrap.setClickable(true);
+        wrap.setOnClickListener(v -> toggleVoiceInput());
+        wrap.setOnLongClickListener(v -> {
             if (isRecording || isLiveActive || isTranscribing) return false;
             toggleVoiceInputMode();
             return true;
         });
-        stripMicKeyWrap = wrapStripMicButton(micButton);
-        strip.addView(stripMicKeyWrap, weighted(STRIP_HEIGHT, 0.45f));
-        updateMicButtonAppearance();
 
-        return strip;
+        LinearLayout inner = new LinearLayout(this);
+        inner.setOrientation(LinearLayout.VERTICAL);
+        inner.setGravity(Gravity.CENTER);
+        inner.setPadding(dp(3), dp(2), dp(3), dp(1));
+
+        LinearLayout topRow = new LinearLayout(this);
+        topRow.setOrientation(LinearLayout.HORIZONTAL);
+        topRow.setGravity(Gravity.CENTER);
+
+        micModeIcon = new ImageView(this);
+        micModeIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(14), dp(14));
+        iconLp.setMargins(0, 0, dp(3), 0);
+        topRow.addView(micModeIcon, iconLp);
+
+        micLabel = new TextView(this);
+        micLabel.setTextSize(11);
+        micLabel.setTypeface(Typeface.DEFAULT_BOLD);
+        micLabel.setSingleLine(true);
+        micLabel.setEllipsize(TextUtils.TruncateAt.END);
+        topRow.addView(micLabel, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        micHoldHint = new TextView(this);
+        micHoldHint.setText("⇄ hold");
+        micHoldHint.setTextSize(8);
+        micHoldHint.setTextColor(themeMuted);
+        micHoldHint.setGravity(Gravity.CENTER);
+        micHoldHint.setSingleLine(true);
+
+        inner.addView(topRow, matchWidthWrap());
+        inner.addView(micHoldHint, matchWidthWrap());
+
+        wrap.addView(inner, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        stripMicKeyWrap = wrap;
+        updateMicButtonAppearance();
+        return wrap;
     }
 
     private LinearLayout buildKeyboardPanel() {
@@ -275,10 +336,14 @@ public class VoiceKeyboardService extends InputMethodService {
         utilityRow.addView(compactActionKey("All", this::selectAllText), weighted(UTILITY_KEY_HEIGHT, 0.42f));
         karToggleKey = compactIconKey(R.drawable.ic_kar_toggle, this::toggleBnVowelRow);
         utilityRow.addView(karToggleKey, weighted(UTILITY_KEY_HEIGHT, 0.45f));
-        utilityDeleteKey = createDeleteKeyView(UTILITY_KEY_HEIGHT);
-        utilityRow.addView(utilityDeleteKey, weighted(UTILITY_KEY_HEIGHT, 0.45f));
+        utilityMoreKey = createMoreKeyView(UTILITY_KEY_HEIGHT);
+        utilityRow.addView(utilityMoreKey, weighted(UTILITY_KEY_HEIGHT, 0.45f));
         panel.addView(utilityRow, matchWidthWrap());
         updateKarToggleVisibility();
+
+        presetComposeBar = buildPresetComposeBar();
+        presetComposeBar.setVisibility(View.GONE);
+        panel.addView(presetComposeBar, matchWidthWrap());
 
         letterContainer = new LinearLayout(this);
         letterContainer.setOrientation(LinearLayout.VERTICAL);
@@ -290,6 +355,7 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void rebuildLetterRows() {
         if (letterContainer == null) return;
+        dismissSymbolPopup();
         letterContainer.removeAllViews();
         bnRow1Layout = null;
         String[][] rows = morePage ? moreRowsFor(layoutLang) : layoutRowsFor(layoutLang);
@@ -436,14 +502,14 @@ public class VoiceKeyboardService extends InputMethodService {
             return new String[][]{
                 {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"},
                 {"a", "s", "d", "f", "g", "h", "j", "k", "l", "'"},
-                {"z", "x", "c", "v", "b", "n", "m", ".", "?", TOK_MORE},
+                {"z", "x", "c", "v", "b", "n", "m", ".", "?", TOK_DELETE},
             };
         }
         if (MainActivity.LANG_AR.equals(lang)) {
             return new String[][]{
                 {"\u0636", "\u0635", "\u062B", "\u0642", "\u0641", "\u063A", "\u0639", "\u0647", "\u062E", "\u062D"},
                 {"\u062C", "\u0634", "\u0633", "\u064A", "\u0628", "\u0644", "\u0627", "\u062A", "\u0646", "\u0645"},
-                {"\u0643", "\u0637", "\u0630", "\u0621", "\u0624", "\u0631", "\u0649", "\u0629", "\u0648", TOK_MORE},
+                {"\u0643", "\u0637", "\u0630", "\u0621", "\u0624", "\u0631", "\u0649", "\u0629", "\u0648", TOK_DELETE},
             };
         }
         return new String[][]{
@@ -451,14 +517,269 @@ public class VoiceKeyboardService extends InputMethodService {
             {"\u0995", "\u0996", "\u0997", "\u0998", "\u0999", "\u099A", "\u099B", "\u099C", "\u099D", "\u099E"},
             {"\u099F", "\u09A0", "\u09A1", "\u09A2", "\u09A3", "\u09A4", "\u09A5", "\u09A6", "\u09A7", "\u09A8"},
             {"\u09AA", "\u09AB", "\u09AC", "\u09AD", "\u09AE", "\u09AF", "\u09B0", "\u09B2", "\u09B6", "\u09B7"},
-            {"\u09B8", "\u09B9", "\u09DC", "\u09DD", "\u09CE", "\u09CD\u09AF", "\u09AF\u09BC", ",", "\u0964", TOK_MORE},
+            {"\u09B8", "\u09B9", "\u09DC", "\u09DD", "\u09CD\u09AF", "\u09AF\u09BC", ",", "\u09CD", "\u0964", TOK_DELETE},
         };
     }
 
     private PopupWindow globePopup;
     private PopupWindow symbolPopup;
+    private PopupWindow presetPopup;
+
+    private void openMorePage() {
+        dismissSymbolPopup();
+        dismissPresetPopup();
+        hidePresetCompose();
+        morePage = true;
+        resetBnKarState();
+        rebuildLetterRows();
+    }
+
+    private java.util.List<String> loadPresets() {
+        java.util.List<String> list = new java.util.ArrayList<>();
+        try {
+            String raw = getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE)
+                .getString(MainActivity.KEY_PRESETS, MainActivity.DEFAULT_PRESETS);
+            JSONArray arr = new JSONArray(raw != null ? raw : "[]");
+            for (int i = 0; i < arr.length(); i++) {
+                String item = arr.optString(i, "").trim();
+                if (!item.isEmpty()) list.add(item);
+            }
+        } catch (Exception ignored) {
+        }
+        return list;
+    }
+
+    private void savePresets(java.util.List<String> presets) {
+        JSONArray arr = new JSONArray();
+        for (String preset : presets) {
+            if (preset != null && !preset.trim().isEmpty()) {
+                arr.put(preset.trim());
+            }
+        }
+        getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(MainActivity.KEY_PRESETS, arr.toString())
+            .apply();
+    }
+
+    private LinearLayout buildPresetComposeBar() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(2), 0, dp(4));
+
+        presetComposeInput = new EditText(this);
+        presetComposeInput.setHint("Type new preset…");
+        presetComposeInput.setTextSize(13);
+        presetComposeInput.setSingleLine(false);
+        presetComposeInput.setMaxLines(3);
+        presetComposeInput.setMinHeight(dp(34));
+        presetComposeInput.setPadding(dp(8), dp(6), dp(8), dp(6));
+        GradientDrawable inputBg = new GradientDrawable();
+        inputBg.setColor(themeKeyBg);
+        inputBg.setCornerRadius(dp(7));
+        inputBg.setStroke(dp(1), themeAccent);
+        presetComposeInput.setBackground(inputBg);
+        presetComposeInput.setTextColor(themeKeyText);
+        presetComposeInput.setHintTextColor(themeMuted);
+        row.addView(presetComposeInput, weighted(UTILITY_KEY_HEIGHT, 1f));
+
+        Button saveBtn = new Button(this);
+        saveBtn.setText("Save");
+        saveBtn.setAllCaps(false);
+        saveBtn.setTextSize(11);
+        saveBtn.setMinWidth(0);
+        saveBtn.setMinHeight(0);
+        saveBtn.setPadding(dp(6), dp(2), dp(6), dp(2));
+        styleKeyButton(saveBtn, true);
+        saveBtn.setOnClickListener(v -> savePresetCompose());
+        row.addView(saveBtn, weighted(UTILITY_KEY_HEIGHT, 0.42f));
+
+        Button cancelBtn = new Button(this);
+        cancelBtn.setText("✕");
+        cancelBtn.setAllCaps(false);
+        cancelBtn.setTextSize(12);
+        cancelBtn.setMinWidth(0);
+        cancelBtn.setMinHeight(0);
+        cancelBtn.setPadding(dp(4), dp(2), dp(4), dp(2));
+        styleKeyButton(cancelBtn, false);
+        cancelBtn.setOnClickListener(v -> hidePresetCompose());
+        row.addView(cancelBtn, weighted(UTILITY_KEY_HEIGHT, 0.28f));
+        return row;
+    }
+
+    private void showPresetCompose() {
+        if (voiceOnlyMode) {
+            voiceOnlyMode = false;
+            applyVoiceOnlyVisibility();
+            savePreferences();
+        }
+        if (presetComposeBar == null) return;
+        presetComposeBar.setVisibility(View.VISIBLE);
+        presetComposeActive = true;
+        presetComposeInput.setText("");
+        presetComposeInput.requestFocus();
+    }
+
+    private void hidePresetCompose() {
+        presetComposeActive = false;
+        if (presetComposeBar != null) {
+            presetComposeBar.setVisibility(View.GONE);
+        }
+        if (presetComposeInput != null) {
+            presetComposeInput.setText("");
+        }
+    }
+
+    private void savePresetCompose() {
+        if (presetComposeInput == null) return;
+        String text = presetComposeInput.getText().toString().trim();
+        if (text.isEmpty()) return;
+        java.util.List<String> updated = loadPresets();
+        if (updated.size() >= MAX_PRESETS) return;
+        updated.add(text);
+        savePresets(updated);
+        hidePresetCompose();
+    }
+
+    private void dismissPresetPopup() {
+        if (presetPopup != null && presetPopup.isShowing()) {
+            presetPopup.dismiss();
+        }
+        presetPopup = null;
+    }
+
+    private void togglePresetPopup(View anchor) {
+        if (presetPopup != null && presetPopup.isShowing()) {
+            dismissPresetPopup();
+            return;
+        }
+        dismissGlobePopup();
+        dismissSymbolPopup();
+        hidePresetCompose();
+        showPresetPopup(anchor);
+    }
+
+    private void showPresetPopup(View anchor) {
+        LinearLayout menu = new LinearLayout(this);
+        menu.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable menuBg = new GradientDrawable();
+        menuBg.setColor(themeKeyBg);
+        menuBg.setCornerRadius(dp(10));
+        menuBg.setStroke(dp(1), themeKeyStroke);
+        menu.setBackground(menuBg);
+        menu.setPadding(dp(8), dp(8), dp(8), dp(8));
+        int menuWidth = dp(260);
+
+        TextView title = new TextView(this);
+        title.setText("Preset messages");
+        title.setTextSize(12);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(themeMuted);
+        title.setPadding(dp(4), 0, dp(4), dp(6));
+        menu.addView(title, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        java.util.List<String> presets = loadPresets();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        if (presets.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("No presets yet");
+            empty.setTextSize(13);
+            empty.setTextColor(themeMuted);
+            empty.setPadding(dp(8), dp(4), dp(8), dp(8));
+            list.addView(empty, matchWidthWrap());
+        } else {
+            for (int i = 0; i < presets.size(); i++) {
+                final int index = i;
+                final String message = presets.get(i);
+                Button item = new Button(this);
+                item.setText(message);
+                item.setAllCaps(false);
+                item.setTextSize(14);
+                item.setMinWidth(0);
+                item.setMinHeight(0);
+                item.setPadding(dp(10), dp(8), dp(10), dp(8));
+                item.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+                item.setSingleLine(true);
+                item.setEllipsize(TextUtils.TruncateAt.END);
+                styleKeyButton(item, false);
+                item.setOnClickListener(v -> {
+                    commitText(message);
+                    dismissPresetPopup();
+                });
+                item.setOnLongClickListener(v -> {
+                    java.util.List<String> updated = loadPresets();
+                    if (index >= 0 && index < updated.size()) {
+                        updated.remove(index);
+                        savePresets(updated);
+                        dismissPresetPopup();
+                        showPresetPopup(anchor);
+                    }
+                    return true;
+                });
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+                lp.bottomMargin = dp(4);
+                list.addView(item, lp);
+            }
+        }
+        scroll.addView(list, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ));
+        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            dp(Math.min(180, Math.max(48, presets.size() * 44)))
+        );
+        menu.addView(scroll, scrollLp);
+
+        View divider = new View(this);
+        divider.setBackgroundColor(themeKeyStroke);
+        LinearLayout.LayoutParams divParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+        divParams.setMargins(0, dp(6), 0, dp(6));
+        menu.addView(divider, divParams);
+
+        Button addBtn = new Button(this);
+        addBtn.setText("+ Add new message");
+        addBtn.setAllCaps(false);
+        addBtn.setTextSize(14);
+        addBtn.setMinWidth(0);
+        addBtn.setMinHeight(0);
+        addBtn.setPadding(dp(10), dp(10), dp(10), dp(10));
+        addBtn.setGravity(Gravity.CENTER);
+        styleKeyButton(addBtn, true);
+        addBtn.setOnClickListener(v -> {
+            dismissPresetPopup();
+            showPresetCompose();
+        });
+        menu.addView(addBtn, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        menu.measure(
+            View.MeasureSpec.makeMeasureSpec(menuWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        );
+        int menuHeight = menu.getMeasuredHeight();
+
+        presetPopup = new PopupWindow(menu, menuWidth, LinearLayout.LayoutParams.WRAP_CONTENT, true);
+        presetPopup.setElevation(dp(10));
+        presetPopup.setBackgroundDrawable(null);
+        presetPopup.setOutsideTouchable(true);
+        presetPopup.showAsDropDown(anchor, 0, -(anchor.getHeight() + menuHeight + dp(6)));
+    }
 
     private void showGlobeMenu(View anchor) {
+        dismissPresetPopup();
         dismissSymbolPopup();
         dismissGlobePopup();
         LinearLayout menu = new LinearLayout(this);
@@ -548,6 +869,7 @@ public class VoiceKeyboardService extends InputMethodService {
     private void showSymbolPopup(View anchor, String[] symbols) {
         dismissSymbolPopup();
         dismissGlobePopup();
+        dismissPresetPopup();
 
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -599,14 +921,6 @@ public class VoiceKeyboardService extends InputMethodService {
         symbolPopup.showAsDropDown(anchor, 0, -(anchor.getHeight() + popupHeight + dp(8)));
     }
 
-    private View wrapStripMicButton(Button button) {
-        FrameLayout wrap = new FrameLayout(this);
-        styleKeyBackground(wrap, false);
-        wrap.addView(button, matchParentSquare());
-        wrap.setMinimumHeight(dp(STRIP_HEIGHT));
-        return wrap;
-    }
-
     private String languageMenuLabel(String lang) {
         String name = languageLabel(lang);
         return layoutLang.equals(lang) ? name + "  ✓" : name;
@@ -652,6 +966,24 @@ public class VoiceKeyboardService extends InputMethodService {
         styleKeyButton(button, false);
         button.setOnClickListener(v -> action.run());
         return button;
+    }
+
+    private View createMoreKeyView(int heightDp) {
+        FrameLayout wrap = new FrameLayout(this);
+        styleKeyBackground(wrap, true);
+        ImageButton more = iconButton(R.drawable.ic_chevron_right);
+        more.setPadding(dp(4), dp(4), dp(4), dp(4));
+        more.setOnClickListener(v -> openMorePage());
+        more.setOnLongClickListener(v -> {
+            if (MainActivity.LANG_BN.equals(layoutLang)) {
+                showSymbolPopup(more, BN_DANDA_POPUP_SYMBOLS);
+                return true;
+            }
+            return false;
+        });
+        wrap.addView(more, matchParentSquare());
+        wrap.setMinimumHeight(dp(heightDp));
+        return wrap;
     }
 
     private View createDeleteKeyView(int heightDp) {
@@ -707,8 +1039,13 @@ public class VoiceKeyboardService extends InputMethodService {
         if (stripDeleteKey != null) {
             stripDeleteKey.setVisibility(voiceOnlyMode ? View.VISIBLE : View.GONE);
         }
-        if (utilityDeleteKey != null) {
-            utilityDeleteKey.setVisibility(voiceOnlyMode ? View.GONE : View.VISIBLE);
+        if (utilityMoreKey != null) {
+            utilityMoreKey.setVisibility(voiceOnlyMode ? View.GONE : View.VISIBLE);
+        }
+        if (voiceOnlyMode) {
+            dismissSymbolPopup();
+            dismissPresetPopup();
+            hidePresetCompose();
         }
         updateExpandButtonIcon();
         alignStripMicWidth();
@@ -716,8 +1053,8 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void alignStripMicWidth() {
         if (stripMicKeyWrap == null) return;
-        View reference = (utilityDeleteKey != null && utilityDeleteKey.getVisibility() == View.VISIBLE)
-            ? utilityDeleteKey
+        View reference = (utilityMoreKey != null && utilityMoreKey.getVisibility() == View.VISIBLE)
+            ? utilityMoreKey
             : stripDeleteKey;
         if (reference == null) return;
         reference.post(() -> {
@@ -776,28 +1113,43 @@ public class VoiceKeyboardService extends InputMethodService {
     }
 
     private void updateMicButtonAppearance() {
-        if (micButton == null) return;
+        if (micLabel == null || stripMicKeyWrap == null) return;
+        boolean isLiveMode = MainActivity.MODE_LIVE.equals(voiceInputMode);
+        int accent = isLiveMode ? COLOR_LIVE : COLOR_RECORD;
+        int softBg = isLiveMode ? COLOR_LIVE_SOFT : COLOR_RECORD_SOFT;
+        int iconRes = isLiveMode ? R.drawable.ic_live : R.drawable.ic_mic;
+
         if (isTranscribing) {
-            micButton.setText("Transcribing…");
-            setRoundedButtonBackground(micButton, COLOR_RECORD);
-            micButton.setTextColor(COLOR_ACTIVE_TEXT);
+            applyMicKeyStyle(COLOR_RECORD, COLOR_RECORD, "Transcribing…", R.drawable.ic_mic, true, false);
         } else if (isLiveConnecting) {
-            micButton.setText("...");
-            setRoundedButtonBackground(micButton, COLOR_LIVE);
-            micButton.setTextColor(COLOR_ACTIVE_TEXT);
+            applyMicKeyStyle(COLOR_LIVE, COLOR_LIVE, "...", R.drawable.ic_live, true, false);
         } else if (isLiveActive) {
-            micButton.setText(formatVoiceElapsed());
-            setRoundedButtonBackground(micButton, COLOR_LIVE);
-            micButton.setTextColor(COLOR_ACTIVE_TEXT);
+            applyMicKeyStyle(COLOR_LIVE, COLOR_LIVE, formatVoiceElapsed(), R.drawable.ic_live, true, false);
         } else if (isRecording) {
-            micButton.setText(formatVoiceElapsed());
-            setRoundedButtonBackground(micButton, COLOR_RECORD);
-            micButton.setTextColor(COLOR_ACTIVE_TEXT);
+            applyMicKeyStyle(COLOR_RECORD, COLOR_RECORD, formatVoiceElapsed(), R.drawable.ic_mic, true, false);
         } else {
-            micButton.setText(MainActivity.MODE_LIVE.equals(voiceInputMode) ? "Live" : "Voice");
-            setRoundedButtonBackground(micButton, themeKeyBg);
-            micButton.setTextColor(themeKeyText);
+            applyMicKeyStyle(softBg, accent, isLiveMode ? "Live" : "Voice", iconRes, false, true);
         }
+    }
+
+    private void applyMicKeyStyle(int bgColor, int accentColor, String label, int iconRes,
+                                  boolean active, boolean showHoldHint) {
+        micLabel.setText(label);
+        micModeIcon.setImageResource(iconRes);
+        micModeIcon.setColorFilter(active ? COLOR_ACTIVE_TEXT : accentColor, PorterDuff.Mode.SRC_IN);
+        micLabel.setTextColor(active ? COLOR_ACTIVE_TEXT : themeKeyText);
+        micHoldHint.setVisibility(showHoldHint ? View.VISIBLE : View.GONE);
+        if (showHoldHint) {
+            micHoldHint.setTextColor(themeMuted);
+        }
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(BTN_CORNER_RADIUS_DP));
+        bg.setColor(bgColor);
+        if (!active) {
+            bg.setStroke(dp(1), accentColor);
+        }
+        stripMicKeyWrap.setBackground(bg);
     }
 
     private String formatVoiceElapsed() {
@@ -1178,11 +1530,30 @@ public class VoiceKeyboardService extends InputMethodService {
     }
 
     private void commitText(String text) {
+        if (presetComposeActive && presetComposeInput != null) {
+            int start = presetComposeInput.getSelectionStart();
+            int end = presetComposeInput.getSelectionEnd();
+            if (start < 0) start = presetComposeInput.getText().length();
+            if (end < 0) end = start;
+            presetComposeInput.getText().replace(Math.min(start, end), Math.max(start, end), text);
+            return;
+        }
         InputConnection inputConnection = getCurrentInputConnection();
         if (inputConnection != null) inputConnection.commitText(text, 1);
     }
 
     private void deleteBackward() {
+        if (presetComposeActive && presetComposeInput != null) {
+            int start = presetComposeInput.getSelectionStart();
+            int end = presetComposeInput.getSelectionEnd();
+            if (start < 0 || end < 0) return;
+            if (start != end) {
+                presetComposeInput.getText().delete(Math.min(start, end), Math.max(start, end));
+            } else if (start > 0) {
+                presetComposeInput.getText().delete(start - 1, start);
+            }
+            return;
+        }
         InputConnection inputConnection = getCurrentInputConnection();
         if (inputConnection == null) return;
 
@@ -1232,21 +1603,9 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void populateKeyRow(LinearLayout keyRow, String[] keys, boolean isRow1) {
         for (String key : keys) {
-            if (TOK_MORE.equals(key)) {
-                ImageButton moreBtn = iconButton(R.drawable.ic_chevron_right);
-                styleKeyBackground(moreBtn, true);
-                moreBtn.setOnClickListener(v -> {
-                    morePage = true;
-                    resetBnKarState();
-                    rebuildLetterRows();
-                });
-                if (MainActivity.LANG_BN.equals(layoutLang)) {
-                    moreBtn.setOnLongClickListener(v -> {
-                        showSymbolPopup(v, BN_DANDA_POPUP_SYMBOLS);
-                        return true;
-                    });
-                }
-                keyRow.addView(moreBtn, weighted(KEY_HEIGHT, 1));
+            if (TOK_DELETE.equals(key)) {
+                View deleteKey = createDeleteKeyView(KEY_HEIGHT);
+                keyRow.addView(deleteKey, weighted(KEY_HEIGHT, 1));
                 continue;
             }
             if (TOK_BACK.equals(key)) {
