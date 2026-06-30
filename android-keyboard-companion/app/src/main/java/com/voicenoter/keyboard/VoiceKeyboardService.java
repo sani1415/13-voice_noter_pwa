@@ -16,6 +16,7 @@ import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowInsets;
+import android.widget.PopupWindow;
 import android.view.inputmethod.InputConnection;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -40,16 +41,24 @@ import java.util.concurrent.Executors;
 public class VoiceKeyboardService extends InputMethodService {
     private static final String MIME_TYPE = "audio/mp4";
     private static final int KEY_HEIGHT = 34;
+    private static final int UTILITY_KEY_HEIGHT = 28;
     private static final int STRIP_HEIGHT = 40;
-    private static final int BG_COLOR = 0xfff7f3ec;
-    private static final int ACCENT = 0xff1a73e8;
-    private static final int MUTED = 0xff5f6368;
-    private static final int BTN_IDLE_BG = 0xffe8eaed;
-    private static final int BTN_IDLE_TEXT = 0xff202124;
     private static final int COLOR_RECORD = 0xff2e7d32;
     private static final int COLOR_LIVE = 0xffc62828;
     private static final int COLOR_ACTIVE_TEXT = 0xffffffff;
     private static final int BTN_CORNER_RADIUS_DP = 8;
+
+    // Sentinel keys used inside letter rows to flip between the main and "more" page.
+    private static final String TOK_MORE = "MORE";
+    private static final String TOK_BACK = "BACK";
+
+    // Theme colours, resolved from the selected preset in loadPreferences().
+    private int themeBg = 0xfff7f3ec;
+    private int themeAccent = 0xff2f6f6d;
+    private int themeMuted = 0xff5f6368;
+    private int themeKeyBg = 0xffffffff;
+    private int themeKeyText = 0xff202124;
+    private int themeKeyStroke = 0xffe3ddd0;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -74,20 +83,20 @@ public class VoiceKeyboardService extends InputMethodService {
     private File audioFile;
     private TextView status;
     private Button micButton;
-    private ImageButton expandIconButton;
-    private Button expandMicButton;
-    private ImageButton stripDeleteButton;
+    private ImageButton expandArrowButton;
+    private ImageButton stripGlobeButton;
+    private View stripDeleteKey;
+    private View utilityDeleteKey;
     private LinearLayout keyboardPanel;
     private LinearLayout letterContainer;
-    private Button langBnButton;
-    private Button langEnButton;
-    private Button langArButton;
-    private Button numbersToggleButton;
-    private boolean numbersMode = false;
+    private java.util.List<String> enabledLangs = new java.util.ArrayList<>();
+    private boolean morePage = false;
+    private String appliedConfigSig = "";
     private SonioxLiveTranscriber liveTranscriber;
     private volatile boolean isRecording = false;
     private volatile boolean isLiveActive = false;
     private volatile boolean isLiveConnecting = false;
+    private volatile boolean isTranscribing = false;
     private long voiceActivityStartMs = 0;
     private int voiceSessionGeneration = 0;
     private int liveStartOffset = 0;
@@ -107,13 +116,24 @@ public class VoiceKeyboardService extends InputMethodService {
     @Override
     public void onStartInputView(android.view.inputmethod.EditorInfo attribute, boolean restarting) {
         super.onStartInputView(attribute, restarting);
+        if (settingsChangedSinceBuild()) {
+            loadPreferences();
+            setInputView(buildInputView());
+        }
         prefetchSonioxKeyIfNeeded();
+    }
+
+    private boolean settingsChangedSinceBuild() {
+        SharedPreferences prefs = getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE);
+        String sig = prefs.getString(MainActivity.KEY_THEME, MainActivity.DEFAULT_THEME)
+            + "|" + prefs.getString(MainActivity.KEY_ENABLED_LANGS, MainActivity.DEFAULT_ENABLED_LANGS);
+        return !sig.equals(appliedConfigSig);
     }
 
     private View buildInputView() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG_COLOR);
+        root.setBackgroundColor(themeBg);
         root.addView(buildVoiceStrip(), matchWidthWrap());
         keyboardPanel = buildKeyboardPanel();
         root.addView(keyboardPanel, matchWidthWrap());
@@ -151,6 +171,7 @@ public class VoiceKeyboardService extends InputMethodService {
 
     @Override
     public void onWindowHidden() {
+        dismissGlobePopup();
         stopAllVoiceActivity(true);
         super.onWindowHidden();
     }
@@ -173,57 +194,36 @@ public class VoiceKeyboardService extends InputMethodService {
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(6), dp(4), dp(6), dp(4));
 
-        langBnButton = langButton("\u09AC", MainActivity.LANG_BN);
-        langEnButton = langButton("\u0987", MainActivity.LANG_EN);
-        langArButton = langButton("\u098F", MainActivity.LANG_AR);
-        strip.addView(langBnButton, weighted(STRIP_HEIGHT, 0.45f));
-        strip.addView(langEnButton, weighted(STRIP_HEIGHT, 0.45f));
-        strip.addView(langArButton, weighted(STRIP_HEIGHT, 0.45f));
-        updateLangButtonStyles();
+        stripGlobeButton = iconButton(R.drawable.ic_globe);
+        stripGlobeButton.setOnClickListener(this::showGlobeMenu);
+        strip.addView(stripGlobeButton, weighted(STRIP_HEIGHT, 0.65f));
 
         micButton = new Button(this);
         micButton.setAllCaps(false);
-        micButton.setTextSize(13);
+        micButton.setTextSize(12);
         micButton.setTypeface(Typeface.DEFAULT_BOLD);
-        micButton.setPadding(dp(8), dp(4), dp(8), dp(4));
+        micButton.setPadding(dp(6), dp(2), dp(6), dp(2));
         micButton.setOnClickListener(v -> toggleVoiceInput());
         micButton.setOnLongClickListener(v -> {
-            if (isRecording || isLiveActive) return false;
+            if (isRecording || isLiveActive || isTranscribing) return false;
             toggleVoiceInputMode();
             return true;
         });
-        strip.addView(micButton, weighted(STRIP_HEIGHT, 1.2f));
+        strip.addView(micButton, weighted(STRIP_HEIGHT, 0.6f));
         updateMicButtonAppearance();
 
-        FrameLayout expandSlot = new FrameLayout(this);
-        expandIconButton = iconButton(R.drawable.ic_keyboard);
-        expandIconButton.setOnClickListener(v -> toggleKeyboardPanel());
-        expandSlot.addView(expandIconButton, matchParentSquare());
-
-        expandMicButton = new Button(this);
-        expandMicButton.setText("MIC");
-        expandMicButton.setAllCaps(false);
-        expandMicButton.setTextSize(11);
-        expandMicButton.setTypeface(Typeface.DEFAULT_BOLD);
-        expandMicButton.setTextColor(MUTED);
-        expandMicButton.setGravity(Gravity.CENTER);
-        expandMicButton.setMinWidth(0);
-        expandMicButton.setMinHeight(0);
-        expandMicButton.setPadding(0, 0, 0, 0);
-        expandMicButton.setOnClickListener(v -> toggleKeyboardPanel());
-        expandSlot.addView(expandMicButton, matchParentSquare());
-
-        strip.addView(expandSlot, weighted(STRIP_HEIGHT, 0.65f));
+        expandArrowButton = iconButton(R.drawable.ic_arrow_up);
+        expandArrowButton.setOnClickListener(v -> toggleKeyboardPanel());
+        strip.addView(expandArrowButton, weighted(STRIP_HEIGHT, 0.5f));
         updateExpandButtonIcon();
 
-        stripDeleteButton = iconButton(R.drawable.ic_close_circle);
-        configureDeleteButton(stripDeleteButton);
-        strip.addView(stripDeleteButton, weighted(STRIP_HEIGHT, 0.65f));
+        stripDeleteKey = createDeleteKeyView(STRIP_HEIGHT);
+        strip.addView(stripDeleteKey, weighted(STRIP_HEIGHT, 0.65f));
 
         status = new TextView(this);
-        status.setText("Ready");
+        status.setText("");
         status.setTextSize(11);
-        status.setTextColor(MUTED);
+        status.setTextColor(themeMuted);
         status.setSingleLine(true);
         status.setGravity(Gravity.CENTER_VERTICAL | Gravity.END);
         strip.addView(status, weighted(STRIP_HEIGHT, 1f));
@@ -240,15 +240,13 @@ public class VoiceKeyboardService extends InputMethodService {
         utilityRow.setOrientation(LinearLayout.HORIZONTAL);
         utilityRow.setGravity(Gravity.CENTER);
 
-        utilityRow.addView(actionKey("Space", () -> commitText(" "), KEY_HEIGHT), weighted(KEY_HEIGHT, 1.2f));
-        numbersToggleButton = actionKey("123", this::toggleNumbersMode, KEY_HEIGHT);
-        utilityRow.addView(numbersToggleButton, weighted(KEY_HEIGHT, 0.65f));
-        utilityRow.addView(actionKey(",", () -> commitText(", "), KEY_HEIGHT), weighted(KEY_HEIGHT, 0.7f));
-        utilityRow.addView(actionKey("Enter", () -> commitText("\n"), KEY_HEIGHT), weighted(KEY_HEIGHT, 1f));
-        utilityRow.addView(actionKey("All", this::selectAllText, KEY_HEIGHT), weighted(KEY_HEIGHT, 0.8f));
-        ImageButton nextKeyboard = iconButton(R.drawable.ic_globe);
-        nextKeyboard.setOnClickListener(v -> switchToNextInputMethod(false));
-        utilityRow.addView(nextKeyboard, weighted(KEY_HEIGHT, 0.65f));
+        utilityRow.addView(compactActionKey("Undo", this::undoText), weighted(UTILITY_KEY_HEIGHT, 0.55f));
+        utilityRow.addView(compactActionKey("Space", () -> commitText(" ")), weighted(UTILITY_KEY_HEIGHT, 0.9f));
+        utilityRow.addView(compactActionKey(",", () -> commitText(", ")), weighted(UTILITY_KEY_HEIGHT, 0.45f));
+        utilityRow.addView(compactActionKey("Enter", () -> commitText("\n")), weighted(UTILITY_KEY_HEIGHT, 0.65f));
+        utilityRow.addView(compactActionKey("All", this::selectAllText), weighted(UTILITY_KEY_HEIGHT, 0.5f));
+        utilityDeleteKey = createDeleteKeyView(UTILITY_KEY_HEIGHT);
+        utilityRow.addView(utilityDeleteKey, weighted(UTILITY_KEY_HEIGHT, 0.55f));
         panel.addView(utilityRow, matchWidthWrap());
 
         letterContainer = new LinearLayout(this);
@@ -262,40 +260,53 @@ public class VoiceKeyboardService extends InputMethodService {
     private void rebuildLetterRows() {
         if (letterContainer == null) return;
         letterContainer.removeAllViews();
-        String[][] rows = numbersMode ? numberRowsFor(layoutLang) : layoutRowsFor(layoutLang);
+        String[][] rows = morePage ? moreRowsFor(layoutLang) : layoutRowsFor(layoutLang);
         for (String[] row : rows) {
             addTextRow(letterContainer, row);
         }
     }
 
+    private String[][] moreRowsFor(String lang) {
+        String[][] nums = numberRowsFor(lang);
+        if (MainActivity.LANG_BN.equals(lang)) {
+            return new String[][]{
+                nums[0],
+                nums[1],
+                nums[2],
+                {"\u09CC", "\u09C8", "\u09C3", "\u09C2", "\u0982", "\u0983", "\u0981", "\u09CE", "\u2018", "\u2019"},
+                {"\u09AF\u09BC", "\u098B", "\u09BD", "\u09E0", "\u098C", "\u0964", "\u09F3", "\u20AC", "\u0964", TOK_BACK},
+            };
+        }
+        return new String[][]{
+            nums[0],
+            nums[1],
+            nums[2],
+            {TOK_BACK},
+        };
+    }
+
     private String[][] numberRowsFor(String lang) {
+        String[] symbolsA = {"@", "#", "$", "%", "&", "*", "-", "+", "(", ")"};
+        String[] symbolsB = {"!", "\"", "'", ":", ";", "/", "?", "_", ".", "="};
         if (MainActivity.LANG_BN.equals(lang)) {
             return new String[][]{
                 {"\u09E7", "\u09E8", "\u09E9", "\u09EA", "\u09EB", "\u09EC", "\u09ED", "\u09EE", "\u09EF", "\u09E6"},
+                symbolsA,
+                {"\u09F3", "\u20AC", "<", ">", "[", "]", "{", "}", "\u0964", "="},
             };
         }
         if (MainActivity.LANG_AR.equals(lang)) {
             return new String[][]{
                 {"\u0661", "\u0662", "\u0663", "\u0664", "\u0665", "\u0666", "\u0667", "\u0668", "\u0669", "\u0660"},
+                symbolsA,
+                symbolsB,
             };
         }
         return new String[][]{
             {"1", "2", "3", "4", "5", "6", "7", "8", "9", "0"},
+            symbolsA,
+            symbolsB,
         };
-    }
-
-    private void toggleNumbersMode() {
-        numbersMode = !numbersMode;
-        updateNumbersToggleStyle();
-        rebuildLetterRows();
-        setStatus(numbersMode ? "Numbers" : languageLabel(layoutLang) + " keyboard");
-    }
-
-    private void updateNumbersToggleStyle() {
-        if (numbersToggleButton == null) return;
-        numbersToggleButton.setText(numbersMode ? "ABC" : "123");
-        numbersToggleButton.setTypeface(numbersMode ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-        numbersToggleButton.setTextColor(numbersMode ? ACCENT : BTN_IDLE_TEXT);
     }
 
     private String[][] layoutRowsFor(String lang) {
@@ -303,34 +314,109 @@ public class VoiceKeyboardService extends InputMethodService {
             return new String[][]{
                 {"q", "w", "e", "r", "t", "y", "u", "i", "o", "p"},
                 {"a", "s", "d", "f", "g", "h", "j", "k", "l", "'"},
-                {"z", "x", "c", "v", "b", "n", "m", ".", "?", "!"},
+                {"z", "x", "c", "v", "b", "n", "m", ".", "?", TOK_MORE},
             };
         }
         if (MainActivity.LANG_AR.equals(lang)) {
             return new String[][]{
                 {"\u0636", "\u0635", "\u062B", "\u0642", "\u0641", "\u063A", "\u0639", "\u0647", "\u062E", "\u062D"},
                 {"\u062C", "\u0634", "\u0633", "\u064A", "\u0628", "\u0644", "\u0627", "\u062A", "\u0646", "\u0645"},
-                {"\u0643", "\u0637", "\u0630", "\u0621", "\u0624", "\u0631", "\u0649", "\u0629", "\u0648", "\u0632"},
+                {"\u0643", "\u0637", "\u0630", "\u0621", "\u0624", "\u0631", "\u0649", "\u0629", "\u0648", TOK_MORE},
             };
         }
         return new String[][]{
-            {"\u0985", "\u0986", "\u0987", "\u0988", "\u0989", "\u098A", "\u0995", "\u0996", "\u0997", "\u0998"},
-            {"\u0999", "\u099A", "\u099B", "\u099C", "\u099F", "\u09A0", "\u09A1", "\u09A2", "\u09A4", "\u09A5"},
-            {"\u09A6", "\u09A7", "\u09A8", "\u09AA", "\u09AB", "\u09AC", "\u09AD", "\u09AE", "\u09AF", "\u09B0"},
-            {"\u09B2", "\u09B6", "\u09B7", "\u09B8", "\u09B9", "\u09BE", "\u09BF", "\u09C0", "\u09C7", "\u0964"},
+            {"\u0985", "\u0986", "\u0987", "\u0988", "\u0989", "\u098A", "\u098F", "\u0990", "\u0993", "\u0994"},
+            {"\u0995", "\u0996", "\u0997", "\u0998", "\u0999", "\u099A", "\u099B", "\u099C", "\u099D", "\u099E"},
+            {"\u099F", "\u09A0", "\u09A1", "\u09A2", "\u09A3", "\u09A4", "\u09A5", "\u09A6", "\u09A7", "\u09A8"},
+            {"\u09AA", "\u09AB", "\u09AC", "\u09AD", "\u09AE", "\u09AF", "\u09B0", "\u09B2", "\u09B6", "\u09B7"},
+            {"\u09B8", "\u09B9", "\u09DC", "\u09DD", "\u09CE", "\u09CD\u09AF", "\u098B", "\u09BE", "\u09BF", TOK_MORE},
         };
     }
 
-    private Button langButton(String label, String lang) {
-        Button button = new Button(this);
-        button.setText(label);
-        button.setAllCaps(false);
-        button.setTextSize(16);
-        button.setMinWidth(0);
-        button.setMinHeight(0);
-        button.setPadding(0, 0, 0, 0);
-        button.setOnClickListener(v -> setLayoutLanguage(lang));
-        return button;
+    private PopupWindow globePopup;
+
+    private void showGlobeMenu(View anchor) {
+        dismissGlobePopup();
+        LinearLayout menu = new LinearLayout(this);
+        menu.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable menuBg = new GradientDrawable();
+        menuBg.setColor(themeKeyBg);
+        menuBg.setCornerRadius(dp(10));
+        menuBg.setStroke(dp(1), themeKeyStroke);
+        menu.setBackground(menuBg);
+        menu.setPadding(dp(8), dp(8), dp(8), dp(8));
+        int menuWidth = dp(216);
+
+        for (String lang : enabledLangs) {
+            Button item = new Button(this);
+            item.setText(languageMenuLabel(lang));
+            item.setAllCaps(false);
+            item.setTextSize(15);
+            item.setMinWidth(0);
+            item.setMinHeight(0);
+            item.setPadding(dp(12), dp(10), dp(12), dp(10));
+            item.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+            styleKeyButton(item, layoutLang.equals(lang));
+            item.setOnClickListener(v -> {
+                setLayoutLanguage(lang);
+                dismissGlobePopup();
+            });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            );
+            lp.bottomMargin = dp(4);
+            menu.addView(item, lp);
+        }
+
+        View divider = new View(this);
+        divider.setBackgroundColor(themeKeyStroke);
+        LinearLayout.LayoutParams divParams = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(1));
+        divParams.setMargins(0, dp(4), 0, dp(8));
+        menu.addView(divider, divParams);
+
+        Button otherKeyboard = new Button(this);
+        otherKeyboard.setText("Other keyboard…");
+        otherKeyboard.setAllCaps(false);
+        otherKeyboard.setTextSize(14);
+        otherKeyboard.setMinWidth(0);
+        otherKeyboard.setMinHeight(0);
+        otherKeyboard.setPadding(dp(12), dp(10), dp(12), dp(10));
+        otherKeyboard.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
+        styleKeyButton(otherKeyboard, false);
+        otherKeyboard.setOnClickListener(v -> {
+            dismissGlobePopup();
+            switchToNextInputMethod(false);
+        });
+        menu.addView(otherKeyboard, new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ));
+
+        menu.measure(
+            View.MeasureSpec.makeMeasureSpec(menuWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        );
+        int menuHeight = menu.getMeasuredHeight();
+
+        globePopup = new PopupWindow(menu, menuWidth, LinearLayout.LayoutParams.WRAP_CONTENT, true);
+        globePopup.setElevation(dp(10));
+        globePopup.setBackgroundDrawable(null);
+        globePopup.setOutsideTouchable(true);
+        globePopup.showAsDropDown(anchor, 0, -(anchor.getHeight() + menuHeight + dp(6)));
+    }
+
+    private void dismissGlobePopup() {
+        if (globePopup != null && globePopup.isShowing()) {
+            globePopup.dismiss();
+        }
+        globePopup = null;
+    }
+
+    private String languageMenuLabel(String lang) {
+        String name = languageLabel(lang);
+        return layoutLang.equals(lang) ? name + "  ✓" : name;
     }
 
     private ImageButton iconButton(int drawableRes) {
@@ -342,6 +428,38 @@ public class VoiceKeyboardService extends InputMethodService {
         return button;
     }
 
+    private Button compactActionKey(String label, Runnable action) {
+        Button button = new Button(this);
+        button.setText(label);
+        button.setAllCaps(false);
+        button.setTextSize(10);
+        button.setMinWidth(0);
+        button.setMinHeight(0);
+        button.setPadding(dp(1), 0, dp(1), 0);
+        styleKeyButton(button, false);
+        button.setOnClickListener(v -> action.run());
+        return button;
+    }
+
+    private View createDeleteKeyView(int heightDp) {
+        FrameLayout wrap = new FrameLayout(this);
+        styleKeyBackground(wrap, false);
+        ImageButton delete = iconButton(R.drawable.ic_close_circle);
+        delete.setPadding(dp(4), dp(4), dp(4), dp(4));
+        configureDeleteButton(delete);
+        wrap.addView(delete, matchParentSquare());
+        wrap.setMinimumHeight(dp(heightDp));
+        return wrap;
+    }
+
+    private void styleKeyBackground(View view, boolean accent) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(themeKeyBg);
+        bg.setCornerRadius(dp(7));
+        bg.setStroke(dp(1), accent ? themeAccent : themeKeyStroke);
+        view.setBackground(bg);
+    }
+
     private Button actionKey(String label, Runnable action, int heightDp) {
         Button button = new Button(this);
         button.setText(label);
@@ -350,31 +468,16 @@ public class VoiceKeyboardService extends InputMethodService {
         button.setMinWidth(0);
         button.setMinHeight(0);
         button.setPadding(dp(2), 0, dp(2), 0);
+        styleKeyButton(button, false);
         button.setOnClickListener(v -> action.run());
         return button;
     }
 
     private void setLayoutLanguage(String lang) {
         layoutLang = lang;
-        numbersMode = false;
-        updateLangButtonStyles();
-        updateNumbersToggleStyle();
+        morePage = false;
         rebuildLetterRows();
         savePreferences();
-        setStatus(languageLabel(lang) + " keyboard");
-    }
-
-    private void updateLangButtonStyles() {
-        styleLangButton(langBnButton, MainActivity.LANG_BN);
-        styleLangButton(langEnButton, MainActivity.LANG_EN);
-        styleLangButton(langArButton, MainActivity.LANG_AR);
-    }
-
-    private void styleLangButton(Button button, String lang) {
-        if (button == null) return;
-        boolean selected = layoutLang.equals(lang);
-        button.setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
-        button.setTextColor(selected ? ACCENT : MUTED);
     }
 
     private void toggleKeyboardPanel() {
@@ -387,13 +490,18 @@ public class VoiceKeyboardService extends InputMethodService {
         if (keyboardPanel != null) {
             keyboardPanel.setVisibility(voiceOnlyMode ? View.GONE : View.VISIBLE);
         }
+        if (stripDeleteKey != null) {
+            stripDeleteKey.setVisibility(voiceOnlyMode ? View.VISIBLE : View.GONE);
+        }
+        if (utilityDeleteKey != null) {
+            utilityDeleteKey.setVisibility(voiceOnlyMode ? View.GONE : View.VISIBLE);
+        }
         updateExpandButtonIcon();
     }
 
     private void updateExpandButtonIcon() {
-        if (expandIconButton == null || expandMicButton == null) return;
-        expandIconButton.setVisibility(voiceOnlyMode ? View.VISIBLE : View.GONE);
-        expandMicButton.setVisibility(voiceOnlyMode ? View.GONE : View.VISIBLE);
+        if (expandArrowButton == null) return;
+        expandArrowButton.setImageResource(voiceOnlyMode ? R.drawable.ic_arrow_up : R.drawable.ic_arrow_down);
     }
 
     private String languageLabel(String lang) {
@@ -419,7 +527,6 @@ public class VoiceKeyboardService extends InputMethodService {
             : MainActivity.MODE_LIVE;
         savePreferences();
         updateMicButtonAppearance();
-        setStatus(MainActivity.MODE_LIVE.equals(voiceInputMode) ? "Live mode" : "Voice mode");
         prefetchSonioxKeyIfNeeded();
     }
 
@@ -436,7 +543,11 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void updateMicButtonAppearance() {
         if (micButton == null) return;
-        if (isLiveConnecting) {
+        if (isTranscribing) {
+            micButton.setText("Transcribing…");
+            setRoundedButtonBackground(micButton, COLOR_RECORD);
+            micButton.setTextColor(COLOR_ACTIVE_TEXT);
+        } else if (isLiveConnecting) {
             micButton.setText("...");
             setRoundedButtonBackground(micButton, COLOR_LIVE);
             micButton.setTextColor(COLOR_ACTIVE_TEXT);
@@ -450,8 +561,8 @@ public class VoiceKeyboardService extends InputMethodService {
             micButton.setTextColor(COLOR_ACTIVE_TEXT);
         } else {
             micButton.setText(MainActivity.MODE_LIVE.equals(voiceInputMode) ? "Live" : "Voice");
-            setRoundedButtonBackground(micButton, BTN_IDLE_BG);
-            micButton.setTextColor(BTN_IDLE_TEXT);
+            setRoundedButtonBackground(micButton, themeKeyBg);
+            micButton.setTextColor(themeKeyText);
         }
     }
 
@@ -498,7 +609,6 @@ public class VoiceKeyboardService extends InputMethodService {
         beginLiveAnchor();
         final int session = ++voiceSessionGeneration;
         updateMicButtonAppearance();
-        setStatus("Connecting...");
 
         liveTranscriber = new SonioxLiveTranscriber();
         liveTranscriber.start(this, endpoint, layoutLang, new SonioxLiveTranscriber.Listener() {
@@ -508,7 +618,6 @@ public class VoiceKeyboardService extends InputMethodService {
                     if (session != voiceSessionGeneration || !isLiveActive) return;
                     isLiveConnecting = true;
                     updateMicButtonAppearance();
-                    setStatus("Connecting...");
                 });
             }
 
@@ -519,7 +628,6 @@ public class VoiceKeyboardService extends InputMethodService {
                     isLiveConnecting = false;
                     startVoiceTimer();
                     updateMicButtonAppearance();
-                    setStatus("Live...");
                 });
             }
 
@@ -533,7 +641,6 @@ public class VoiceKeyboardService extends InputMethodService {
                         updateMicButtonAppearance();
                     }
                     updateLiveInsert(finalText, partialText);
-                    setStatus("Live...");
                 });
             }
 
@@ -573,7 +680,6 @@ public class VoiceKeyboardService extends InputMethodService {
         SonioxLiveTranscriber active = liveTranscriber;
         liveTranscriber = null;
         updateMicButtonAppearance();
-        setStatus("Ready");
         if (active != null) active.stop();
     }
 
@@ -671,7 +777,6 @@ public class VoiceKeyboardService extends InputMethodService {
         ic.setComposingText(displayText, 1);
         liveLastText = displayText;
         ic.endBatchEdit();
-        setStatus("Live...");
     }
 
     private String trimStatus(String message) {
@@ -707,10 +812,9 @@ public class VoiceKeyboardService extends InputMethodService {
             voiceSessionGeneration++;
             startVoiceTimer();
             updateMicButtonAppearance();
-            setStatus("Listening...");
         } catch (Exception e) {
             cancelRecordingQuietly();
-            setStatus("Mic error");
+            postStatus("Mic error");
         }
     }
 
@@ -729,13 +833,15 @@ public class VoiceKeyboardService extends InputMethodService {
         }
 
         stopRecorderQuietly();
-        setStatus("Transcribing...");
+        isTranscribing = true;
+        updateMicButtonAppearance();
 
         executor.execute(() -> transcribe(finishedFile, session));
     }
 
     private void cancelRecordingQuietly() {
         voiceSessionGeneration++;
+        isTranscribing = false;
         stopRecorderQuietly();
         if (audioFile != null) {
             audioFile.delete();
@@ -747,7 +853,7 @@ public class VoiceKeyboardService extends InputMethodService {
         try {
             if (session != voiceSessionGeneration) return;
             if (file == null || !file.exists() || file.length() == 0) {
-                postStatus("No audio");
+                finishTranscribe(session, null, "No audio");
                 return;
             }
 
@@ -780,26 +886,35 @@ public class VoiceKeyboardService extends InputMethodService {
             while ((line = reader.readLine()) != null) response.append(line);
 
             if (code < 200 || code >= 300) {
-                postStatus("Failed " + code);
+                finishTranscribe(session, null, "Failed " + code);
                 return;
             }
 
             String text = new JSONObject(response.toString()).optString("text", "").trim();
             if (text.isEmpty()) {
-                postStatus("No speech");
+                finishTranscribe(session, null, "No speech");
                 return;
             }
 
-            mainHandler.post(() -> {
-                if (session != voiceSessionGeneration) return;
-                commitText(text);
-                setStatus("Inserted");
-            });
+            finishTranscribe(session, text, null);
         } catch (Exception e) {
-            postStatus("Error");
+            finishTranscribe(session, null, "Error");
         } finally {
             if (file != null) file.delete();
         }
+    }
+
+    private void finishTranscribe(int session, String text, String error) {
+        mainHandler.post(() -> {
+            if (session != voiceSessionGeneration) return;
+            isTranscribing = false;
+            if (text != null && !text.isEmpty()) {
+                commitText(text);
+            } else if (error != null) {
+                postStatus(error);
+            }
+            updateMicButtonAppearance();
+        });
     }
 
     private String encodeFile(File file) throws Exception {
@@ -851,6 +966,11 @@ public class VoiceKeyboardService extends InputMethodService {
         if (inputConnection != null) inputConnection.performContextMenuAction(android.R.id.selectAll);
     }
 
+    private void undoText() {
+        InputConnection inputConnection = getCurrentInputConnection();
+        if (inputConnection != null) inputConnection.performContextMenuAction(android.R.id.undo);
+    }
+
     private void configureDeleteButton(View button) {
         button.setOnClickListener(v -> deleteBackward());
         button.setOnLongClickListener(v -> {
@@ -874,18 +994,48 @@ public class VoiceKeyboardService extends InputMethodService {
         keyRow.setPadding(0, dp(2), 0, 0);
 
         for (String key : keys) {
+            if (TOK_MORE.equals(key)) {
+                ImageButton moreBtn = iconButton(R.drawable.ic_chevron_right);
+                styleKeyBackground(moreBtn, true);
+                moreBtn.setOnClickListener(v -> { morePage = true; rebuildLetterRows(); });
+                keyRow.addView(moreBtn, weighted(KEY_HEIGHT, 1));
+                continue;
+            }
+            if (TOK_BACK.equals(key)) {
+                Button button = new Button(this);
+                button.setText(MainActivity.LANG_BN.equals(layoutLang) ? "‹ মূল" : "‹ Main");
+                button.setAllCaps(false);
+                button.setTextSize(13);
+                button.setMinWidth(0);
+                button.setMinHeight(0);
+                button.setPadding(0, 0, 0, 0);
+                styleKeyButton(button, true);
+                button.setOnClickListener(v -> { morePage = false; rebuildLetterRows(); });
+                keyRow.addView(button, weighted(KEY_HEIGHT, 1));
+                continue;
+            }
             Button button = new Button(this);
-            button.setText(key);
-            button.setTextSize(15);
             button.setAllCaps(false);
             button.setMinWidth(0);
             button.setMinHeight(0);
             button.setPadding(0, 0, 0, 0);
+            button.setText(key);
+            button.setTextSize(15);
+            styleKeyButton(button, false);
             button.setOnClickListener(v -> commitText(key));
             keyRow.addView(button, weighted(KEY_HEIGHT, 1));
         }
 
         root.addView(keyRow, matchWidthWrap());
+    }
+
+    private void styleKeyButton(Button button, boolean accent) {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(themeKeyBg);
+        bg.setCornerRadius(dp(7));
+        bg.setStroke(dp(1), themeKeyStroke);
+        button.setBackground(bg);
+        button.setTextColor(accent ? themeAccent : themeKeyText);
     }
 
     private FrameLayout.LayoutParams matchParentSquare() {
@@ -922,6 +1072,48 @@ public class VoiceKeyboardService extends InputMethodService {
             && !MainActivity.LANG_AR.equals(layoutLang)) {
             layoutLang = MainActivity.LANG_BN;
         }
+
+        String themePref = prefs.getString(MainActivity.KEY_THEME, MainActivity.DEFAULT_THEME);
+        applyTheme(themePref);
+
+        String enabledRaw = prefs.getString(MainActivity.KEY_ENABLED_LANGS, MainActivity.DEFAULT_ENABLED_LANGS);
+        enabledLangs = parseEnabledLangs(enabledRaw);
+        if (!enabledLangs.contains(layoutLang)) {
+            layoutLang = enabledLangs.get(0);
+        }
+        morePage = false;
+        appliedConfigSig = themePref + "|" + enabledRaw;
+    }
+
+    private void applyTheme(String theme) {
+        if (MainActivity.THEME_DARK.equals(theme)) {
+            themeBg = 0xff1c1c1e; themeAccent = 0xff4db6ac; themeMuted = 0xffaeaeb2;
+            themeKeyBg = 0xff2c2c2e; themeKeyText = 0xfff5f5f5; themeKeyStroke = 0xff3a3a3c;
+        } else if (MainActivity.THEME_LIGHT.equals(theme)) {
+            themeBg = 0xffeceff1; themeAccent = 0xff1a73e8; themeMuted = 0xff5f6368;
+            themeKeyBg = 0xffffffff; themeKeyText = 0xff202124; themeKeyStroke = 0xffd0d4d8;
+        } else if (MainActivity.THEME_COLORFUL.equals(theme)) {
+            themeBg = 0xff15203a; themeAccent = 0xffffb300; themeMuted = 0xffb9c2dd;
+            themeKeyBg = 0xff243056; themeKeyText = 0xffffffff; themeKeyStroke = 0xff3a4a78;
+        } else { // warm (default)
+            themeBg = 0xfff7f3ec; themeAccent = 0xff2f6f6d; themeMuted = 0xff5f6368;
+            themeKeyBg = 0xffffffff; themeKeyText = 0xff202124; themeKeyStroke = 0xffe3ddd0;
+        }
+    }
+
+    private java.util.List<String> parseEnabledLangs(String raw) {
+        java.util.List<String> list = new java.util.ArrayList<>();
+        if (raw != null) {
+            for (String part : raw.split(",")) {
+                String s = part.trim();
+                boolean known = MainActivity.LANG_BN.equals(s)
+                    || MainActivity.LANG_EN.equals(s)
+                    || MainActivity.LANG_AR.equals(s);
+                if (known && !list.contains(s)) list.add(s);
+            }
+        }
+        if (list.isEmpty()) list.add(MainActivity.LANG_BN);
+        return list;
     }
 
     private void savePreferences() {
