@@ -1,5 +1,5 @@
 /* Service Worker - Voice Notes PWA */
-const CACHE = 'voice-notes-v6';
+const CACHE = 'voice-notes-v7';
 const ASSETS = ['./', './index.html', './style.css', './app.js', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -33,16 +33,19 @@ self.addEventListener('fetch', e => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
 
-    // Network-first for index.html এবং sw.js — সবসময় নতুন version
+    // index.html: cache-first + background refresh (TWA cold start stays fast)
     const isRoot = url.pathname === '/' || url.pathname === '/index.html';
     if (isRoot) {
-      try {
-        const fresh = await fetch(e.request, { cache: 'no-store' });
-        if (fresh.ok) cache.put(e.request, fresh.clone());
-        return fresh;
-      } catch {
-        return await cache.match(e.request) || await cache.match('./index.html');
+      const cached = await cache.match(e.request) || await cache.match('./index.html');
+      const refresh = fetch(e.request, { cache: 'no-store' })
+        .then(fresh => { if (fresh.ok) cache.put(e.request, fresh.clone()); return fresh; })
+        .catch(() => null);
+      if (cached) {
+        refresh;
+        return cached;
       }
+      const fresh = await refresh;
+      return fresh || cached;
     }
 
     // বাকি সব: Cache-first, background update (stale-while-revalidate)

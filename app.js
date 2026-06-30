@@ -3429,10 +3429,21 @@ window.addEventListener('popstate', () => {
 });
 
 /* ══════════════════════════════════════════════════
+   Boot splash (TWA / slow network — instant branded paint)
+══════════════════════════════════════════════════ */
+function dismissBootSplash() {
+  const el = document.getElementById('boot-splash');
+  if (!el || el.classList.contains('boot-splash--hide')) return;
+  el.classList.add('boot-splash--hide');
+  setTimeout(() => el.remove(), 280);
+}
+
+/* ══════════════════════════════════════════════════
    শুরু
 ══════════════════════════════════════════════════ */
 loadPrefs();
 applyPrefs();
+setTimeout(dismissBootSplash, 4500);
 loadVoiceInputMode();
 syncVoiceModeUi();
 syncCreateFabMenu();
@@ -3452,7 +3463,11 @@ updateCloudSyncSummary();
 history.replaceState({ screen: 'list' }, '');
 
 void (async () => {
-  await initSupabase();
+  try {
+    await initSupabase();
+  } finally {
+    dismissBootSplash();
+  }
 })();
 
 if ('serviceWorker' in navigator) {

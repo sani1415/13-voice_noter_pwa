@@ -16,10 +16,31 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <style>
+    html, body { margin: 0; background: #f2ede6; }
+    #boot-splash {
+      position: fixed; inset: 0; z-index: 99999;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #f2ede6; transition: opacity 0.25s ease;
+    }
+    #boot-splash.boot-splash--hide { opacity: 0; pointer-events: none; }
+    #boot-splash svg { margin-bottom: 14px; }
+    #boot-splash span {
+      font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600;
+      color: #2c2418; letter-spacing: 0.02em;
+    }
+  </style>
   <!-- Supabase JS Client -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
+<div id="boot-splash" aria-hidden="true">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <rect x="4" y="4" width="8" height="12" rx="4" fill="#4a90d9"/>
+    <path d="M4 12a8 8 0 0 0 16 0" stroke="#4a90d9" stroke-width="2" stroke-linecap="round" fill="none"/>
+  </svg>
+  <span>Voice Notes</span>
+</div>
 <div id="app">
 
   <!-- লগইন না হলে নোট লিস্ট দেখাবে না (নিরাপত্তা) -->
