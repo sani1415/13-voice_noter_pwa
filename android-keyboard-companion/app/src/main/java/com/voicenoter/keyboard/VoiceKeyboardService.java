@@ -87,6 +87,7 @@ public class VoiceKeyboardService extends InputMethodService {
     private SonioxLiveTranscriber liveTranscriber;
     private volatile boolean isRecording = false;
     private volatile boolean isLiveActive = false;
+    private volatile boolean isLiveConnecting = false;
     private long voiceActivityStartMs = 0;
     private int voiceSessionGeneration = 0;
     private int liveStartOffset = 0;
@@ -99,7 +100,14 @@ public class VoiceKeyboardService extends InputMethodService {
     @Override
     public View onCreateInputView() {
         loadPreferences();
+        prefetchSonioxKeyIfNeeded();
         return buildInputView();
+    }
+
+    @Override
+    public void onStartInputView(android.view.inputmethod.EditorInfo attribute, boolean restarting) {
+        super.onStartInputView(attribute, restarting);
+        prefetchSonioxKeyIfNeeded();
     }
 
     private View buildInputView() {
@@ -412,6 +420,7 @@ public class VoiceKeyboardService extends InputMethodService {
         savePreferences();
         updateMicButtonAppearance();
         setStatus(MainActivity.MODE_LIVE.equals(voiceInputMode) ? "Live mode" : "Voice mode");
+        prefetchSonioxKeyIfNeeded();
     }
 
     private void toggleVoiceInput() {
@@ -427,7 +436,11 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void updateMicButtonAppearance() {
         if (micButton == null) return;
-        if (isLiveActive) {
+        if (isLiveConnecting) {
+            micButton.setText("...");
+            setRoundedButtonBackground(micButton, COLOR_LIVE);
+            micButton.setTextColor(COLOR_ACTIVE_TEXT);
+        } else if (isLiveActive) {
             micButton.setText(formatVoiceElapsed());
             setRoundedButtonBackground(micButton, COLOR_LIVE);
             micButton.setTextColor(COLOR_ACTIVE_TEXT);
@@ -481,25 +494,59 @@ public class VoiceKeyboardService extends InputMethodService {
         }
 
         isLiveActive = true;
+        isLiveConnecting = true;
         beginLiveAnchor();
         final int session = ++voiceSessionGeneration;
-        startVoiceTimer();
         updateMicButtonAppearance();
-        setStatus("Live...");
+        setStatus("Connecting...");
 
         liveTranscriber = new SonioxLiveTranscriber();
-        liveTranscriber.start(endpoint, layoutLang, new SonioxLiveTranscriber.Listener() {
+        liveTranscriber.start(this, endpoint, layoutLang, new SonioxLiveTranscriber.Listener() {
+            @Override
+            public void onConnecting() {
+                mainHandler.post(() -> {
+                    if (session != voiceSessionGeneration || !isLiveActive) return;
+                    isLiveConnecting = true;
+                    updateMicButtonAppearance();
+                    setStatus("Connecting...");
+                });
+            }
+
+            @Override
+            public void onListening() {
+                mainHandler.post(() -> {
+                    if (session != voiceSessionGeneration || !isLiveActive) return;
+                    isLiveConnecting = false;
+                    startVoiceTimer();
+                    updateMicButtonAppearance();
+                    setStatus("Live...");
+                });
+            }
+
             @Override
             public void onTranscriptUpdate(String finalText, String partialText) {
                 mainHandler.post(() -> {
                     if (session != voiceSessionGeneration || !isLiveActive) return;
+                    if (isLiveConnecting) {
+                        isLiveConnecting = false;
+                        startVoiceTimer();
+                        updateMicButtonAppearance();
+                    }
                     updateLiveInsert(finalText, partialText);
+                    setStatus("Live...");
                 });
             }
 
             @Override
             public void onError(String message) {
                 if (session != voiceSessionGeneration) return;
+                mainHandler.post(() -> {
+                    isLiveConnecting = false;
+                    isLiveActive = false;
+                    stopVoiceTimer();
+                    liveTranscriber = null;
+                    updateMicButtonAppearance();
+                });
                 postStatus(trimStatus(message));
             }
 
@@ -507,6 +554,7 @@ public class VoiceKeyboardService extends InputMethodService {
             public void onStopped() {
                 mainHandler.post(() -> {
                     if (session != voiceSessionGeneration) return;
+                    isLiveConnecting = false;
                     isLiveActive = false;
                     stopVoiceTimer();
                     liveTranscriber = null;
@@ -519,6 +567,7 @@ public class VoiceKeyboardService extends InputMethodService {
     private void stopLive() {
         if (!isLiveActive && liveTranscriber == null) return;
         isLiveActive = false;
+        isLiveConnecting = false;
         stopVoiceTimer();
         finalizeLiveInsert();
         SonioxLiveTranscriber active = liveTranscriber;
@@ -530,6 +579,7 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void stopLiveQuietly() {
         isLiveActive = false;
+        isLiveConnecting = false;
         stopVoiceTimer();
         finalizeLiveInsert();
         if (liveTranscriber != null) {
@@ -881,6 +931,13 @@ public class VoiceKeyboardService extends InputMethodService {
             .putString(MainActivity.KEY_LAYOUT_LANG, layoutLang)
             .putString(MainActivity.KEY_VOICE_INPUT_MODE, voiceInputMode)
             .apply();
+    }
+
+    private void prefetchSonioxKeyIfNeeded() {
+        if (!MainActivity.MODE_LIVE.equals(voiceInputMode)) return;
+        String endpoint = getEndpoint();
+        if (endpoint.isEmpty()) return;
+        SonioxKeyCache.prefetch(this, endpoint, executor);
     }
 
     private String getEndpoint() {

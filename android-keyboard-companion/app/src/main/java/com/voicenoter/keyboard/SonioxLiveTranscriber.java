@@ -1,5 +1,6 @@
 package com.voicenoter.keyboard;
 
+import android.content.Context;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -9,15 +10,12 @@ import android.os.Looper;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -29,8 +27,12 @@ import okio.ByteString;
 public class SonioxLiveTranscriber {
     private static final String WS_URL = "wss://stt-rt.soniox.com/transcribe-websocket";
     private static final int SAMPLE_RATE = 16000;
+    /** ~3 seconds of mono PCM at 16 kHz before dropping oldest chunks. */
+    private static final int MAX_BUFFER_BYTES = 96000;
 
     public interface Listener {
+        void onConnecting();
+        void onListening();
         void onTranscriptUpdate(String finalText, String partialText);
         void onError(String message);
         void onStopped();
@@ -41,70 +43,121 @@ public class SonioxLiveTranscriber {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean stopNotified = new AtomicBoolean(false);
+    private final AtomicBoolean listeningNotified = new AtomicBoolean(false);
+    private final AtomicBoolean wsReady = new AtomicBoolean(false);
     private final StringBuilder finalText = new StringBuilder();
+    private final ArrayDeque<byte[]> audioBuffer = new ArrayDeque<>();
+    private final Object bufferLock = new Object();
     private String partialText = "";
 
+    private Context appContext;
     private WebSocket webSocket;
     private AudioRecord audioRecord;
     private Thread audioThread;
     private Listener listener;
+    private int bufferedBytes = 0;
+    private int audioMinBuffer = 0;
 
-    public void start(String baseUrl, String language, Listener listener) {
+    public void start(Context context, String baseUrl, String language, Listener listener) {
         if (running.getAndSet(true)) return;
         stopNotified.set(false);
+        listeningNotified.set(false);
+        wsReady.set(false);
+        this.appContext = context.getApplicationContext();
         this.listener = listener;
         finalText.setLength(0);
         partialText = "";
+        synchronized (bufferLock) {
+            audioBuffer.clear();
+            bufferedBytes = 0;
+        }
 
-        executor.execute(() -> {
+        notifyConnecting();
+
+        new Thread(() -> {
             try {
-                String apiKey = fetchTemporaryApiKey(baseUrl);
+                AtomicReference<String> apiKeyRef = new AtomicReference<>(
+                    SonioxKeyCache.getValidKey(appContext)
+                );
+                AtomicReference<AudioRecord> recordRef = new AtomicReference<>();
+                CountDownLatch parallel = new CountDownLatch(2);
+
+                Thread keyThread = new Thread(() -> {
+                    try {
+                        if (apiKeyRef.get() == null) {
+                            apiKeyRef.set(SonioxKeyCache.fetchAndCache(appContext, baseUrl));
+                        }
+                    } catch (Exception e) {
+                        apiKeyRef.set(null);
+                    } finally {
+                        parallel.countDown();
+                    }
+                }, "soniox-key-fetch");
+
+                Thread micThread = new Thread(() -> {
+                    try {
+                        recordRef.set(prepareAudioRecord());
+                    } finally {
+                        parallel.countDown();
+                    }
+                }, "soniox-mic-prep");
+
+                keyThread.start();
+                micThread.start();
+                parallel.await();
+
+                String apiKey = apiKeyRef.get();
+                AudioRecord record = recordRef.get();
+                if (apiKey == null || apiKey.isEmpty()) {
+                    fail("Soniox key failed");
+                    return;
+                }
+                if (record == null) {
+                    fail("Mic unavailable");
+                    return;
+                }
+
+                audioRecord = record;
+                startEarlyAudioCapture(record);
                 connectWebSocket(apiKey, language);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                fail("Live start interrupted");
             } catch (Exception e) {
                 fail(e.getMessage() != null ? e.getMessage() : "Live start failed");
             }
-        });
+        }, "soniox-live-start").start();
     }
 
     public void stop() {
         if (!running.getAndSet(false)) return;
+        wsReady.set(false);
         listener = null;
         stopAudioCapture();
         executor.execute(this::closeWebSocketAndNotify);
     }
 
-    private String fetchTemporaryApiKey(String baseUrl) throws Exception {
-        String endpoint = baseUrl;
-        while (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
-        HttpURLConnection connection = (HttpURLConnection) new URL(endpoint + "/api/soniox-key").openConnection();
-        connection.setRequestMethod("POST");
-        connection.setConnectTimeout(20000);
-        connection.setReadTimeout(20000);
-        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-        connection.setDoOutput(true);
-        try (OutputStream out = connection.getOutputStream()) {
-            out.write("{}".getBytes(StandardCharsets.UTF_8));
-        }
+    private AudioRecord prepareAudioRecord() {
+        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
+        int encoding = AudioFormat.ENCODING_PCM_16BIT;
+        audioMinBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, channelConfig, encoding);
+        if (audioMinBuffer <= 0) return null;
 
-        int code = connection.getResponseCode();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(
-            code >= 200 && code < 300 ? connection.getInputStream() : connection.getErrorStream(),
-            StandardCharsets.UTF_8
-        ));
-        StringBuilder response = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) response.append(line);
-
-        if (code < 200 || code >= 300) {
-            throw new Exception("Soniox key HTTP " + code);
+        AudioRecord record = new AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            SAMPLE_RATE,
+            channelConfig,
+            encoding,
+            audioMinBuffer * 2
+        );
+        if (record.getState() != AudioRecord.STATE_INITIALIZED) {
+            try {
+                record.release();
+            } catch (Exception ignored) {
+            }
+            return null;
         }
-
-        JSONObject json = new JSONObject(response.toString());
-        String apiKey = json.optString("api_key", "").trim();
-        if (apiKey.isEmpty()) {
-            throw new Exception("Missing Soniox API key");
-        }
-        return apiKey;
+        return record;
     }
 
     private void connectWebSocket(String apiKey, String language) {
@@ -123,7 +176,8 @@ public class SonioxLiveTranscriber {
                     config.put("language_hints_strict", true);
                     config.put("enable_endpoint_detection", true);
                     socket.send(config.toString());
-                    startAudioCapture(socket);
+                    wsReady.set(true);
+                    flushBufferedAudio(socket);
                 } catch (Exception e) {
                     fail(e.getMessage() != null ? e.getMessage() : "Config failed");
                 }
@@ -150,44 +204,61 @@ public class SonioxLiveTranscriber {
         });
     }
 
-    private void startAudioCapture(WebSocket socket) {
-        int channelConfig = AudioFormat.CHANNEL_IN_MONO;
-        int encoding = AudioFormat.ENCODING_PCM_16BIT;
-        int minBuffer = AudioRecord.getMinBufferSize(SAMPLE_RATE, channelConfig, encoding);
-        if (minBuffer <= 0) {
-            fail("Mic unavailable");
-            return;
-        }
-
-        AudioRecord record = new AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE,
-            channelConfig,
-            encoding,
-            minBuffer * 2
-        );
-        if (record.getState() != AudioRecord.STATE_INITIALIZED) {
-            fail("Mic init failed");
-            return;
-        }
-
-        audioRecord = record;
+    private void startEarlyAudioCapture(AudioRecord record) {
         audioThread = new Thread(() -> {
+            byte[] buffer = new byte[Math.max(audioMinBuffer, 512)];
             record.startRecording();
-            byte[] buffer = new byte[minBuffer];
+            notifyListeningOnce();
+
             while (running.get()) {
                 int read = record.read(buffer, 0, buffer.length);
                 if (read <= 0) continue;
                 if (!running.get()) break;
-                if (!socket.send(ByteString.of(buffer, 0, read))) {
+
+                WebSocket socket = webSocket;
+                if (wsReady.get() && socket != null) {
+                    sendAudio(socket, buffer, read);
+                } else {
+                    enqueueAudio(buffer, read);
+                }
+            }
+        }, "soniox-live-audio");
+        audioThread.start();
+    }
+
+    private void sendAudio(WebSocket socket, byte[] buffer, int length) {
+        if (!socket.send(ByteString.of(buffer, 0, length)) && running.get()) {
+            fail("Audio send failed");
+        }
+    }
+
+    private void enqueueAudio(byte[] buffer, int length) {
+        byte[] chunk = new byte[length];
+        System.arraycopy(buffer, 0, chunk, 0, length);
+        synchronized (bufferLock) {
+            while (bufferedBytes + length > MAX_BUFFER_BYTES && !audioBuffer.isEmpty()) {
+                byte[] dropped = audioBuffer.pollFirst();
+                if (dropped != null) bufferedBytes -= dropped.length;
+            }
+            audioBuffer.addLast(chunk);
+            bufferedBytes += length;
+        }
+    }
+
+    private void flushBufferedAudio(WebSocket socket) {
+        synchronized (bufferLock) {
+            while (!audioBuffer.isEmpty() && running.get()) {
+                byte[] chunk = audioBuffer.pollFirst();
+                if (chunk == null) break;
+                bufferedBytes -= chunk.length;
+                if (!socket.send(ByteString.of(chunk))) {
                     if (running.get()) {
                         fail("Audio send failed");
                     }
                     return;
                 }
             }
-        }, "soniox-live-audio");
-        audioThread.start();
+        }
     }
 
     private void handleMessage(String text) {
@@ -236,6 +307,23 @@ public class SonioxLiveTranscriber {
         if (tokenText == null || tokenText.isEmpty()) return false;
         if ("<end>".equals(tokenText)) return false;
         return tokenText.length() < 2 || tokenText.charAt(0) != '<' || tokenText.charAt(tokenText.length() - 1) != '>';
+    }
+
+    private void notifyConnecting() {
+        mainHandler.post(() -> {
+            if (listener != null && running.get()) {
+                listener.onConnecting();
+            }
+        });
+    }
+
+    private void notifyListeningOnce() {
+        if (!listeningNotified.compareAndSet(false, true)) return;
+        mainHandler.post(() -> {
+            if (listener != null && running.get()) {
+                listener.onListening();
+            }
+        });
     }
 
     private void notifyUpdate() {
@@ -289,6 +377,7 @@ public class SonioxLiveTranscriber {
 
     private void fail(String message) {
         if (!running.getAndSet(false)) return;
+        wsReady.set(false);
         stopAudioCapture();
         if (webSocket != null) {
             try {

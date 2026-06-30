@@ -98,7 +98,7 @@ public class MainActivity extends Activity {
         root.addView(switchKeyboard);
 
         TextView footer = new TextView(this);
-        footer.setText("Hold Voice to switch Live mode. Live uses Soniox; record uses /api/transcribe. Voice-only mode shows a slim bar with BN/EN/AR.");
+        footer.setText("Hold Voice to switch Live mode. Live uses Soniox (key cached for faster start); record uses /api/transcribe.");
         footer.setTextSize(13);
         footer.setPadding(0, dp(18), 0, 0);
         root.addView(footer);
