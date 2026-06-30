@@ -40,6 +40,9 @@
             <meta-data
                 android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION"
                 android:value="300" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
+                android:value="com.voicenoter.keyboard.fileprovider" />
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -78,5 +81,15 @@
                 android:name="android.view.im"
                 android:resource="@xml/method" />
         </service>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.voicenoter.keyboard.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/filepaths" />
+        </provider>
     </application>
 </manifest>

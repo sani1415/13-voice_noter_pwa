@@ -10,8 +10,8 @@ android {
         applicationId "com.voicenoter.keyboard"
         minSdk 23
         targetSdk 35
-        versionCode 29
-        versionName "0.3.23"
+        versionCode 30
+        versionName "0.3.24"
     }
 
     applicationVariants.configureEach { variant ->
@@ -23,6 +23,7 @@ android {
 
 dependencies {
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "androidx.core:core:1.13.1"
     // Trusted Web Activity host for the bundled Voice Notes PWA.
     implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
 }

@@ -3428,6 +3428,22 @@ window.addEventListener('popstate', () => {
   }
 });
 
+function bootstrapFromLocalCache() {
+  try {
+    const uid = localStorage.getItem('vn-app-user-id');
+    if (!uid) return false;
+    appUserId = uid;
+    appUsername = localStorage.getItem('vn-app-username') || '';
+    appIsAdmin = localStorage.getItem('vn-app-is-admin') === '1';
+    loadLocalCache();
+    hideAuthGate();
+    showHomeScreen();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* ══════════════════════════════════════════════════
    Boot splash (TWA / slow network — instant branded paint)
 ══════════════════════════════════════════════════ */
@@ -3451,8 +3467,11 @@ try {
   const s = localStorage.getItem('vn-list-sort');
   if (s) listSort = s;
 } catch { /* */ }
-notes = {};
-folders = {};
+const bootedFromCache = bootstrapFromLocalCache();
+if (!bootedFromCache) {
+  notes = {};
+  folders = {};
+}
 syncSettingsControls();
 initSettingsTabs();
 buildLabelSwatches();
@@ -3461,6 +3480,7 @@ updateListSortButton();
 renderNotesList();
 updateCloudSyncSummary();
 history.replaceState({ screen: 'list' }, '');
+if (bootedFromCache) dismissBootSplash();
 
 void (async () => {
   try {

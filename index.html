@@ -14,8 +14,13 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://iqjajofqaimnqvrxgdzc.supabase.co" crossorigin>
+  <link rel="preload" href="style.css" as="style">
+  <link rel="preload" href="app.js" as="script">
   <link rel="stylesheet" href="style.css">
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <style>
     html, body { margin: 0; background: #f2ede6; }
     #boot-splash {
@@ -30,8 +35,6 @@
       color: #2c2418; letter-spacing: 0.02em;
     }
   </style>
-  <!-- Supabase JS Client -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
 <div id="boot-splash" aria-hidden="true">
@@ -987,6 +990,7 @@
   </div>
 
 </div>
-<script src="app.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script defer src="app.js"></script>
 </body>
 </html>
