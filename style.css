@@ -210,6 +210,22 @@ body {
   display: none !important;
 }
 
+#main-shell.ui-fade-out,
+.auth-screen.ui-fade-out {
+  opacity: 0 !important;
+  transition: opacity 0.32s ease;
+  pointer-events: none;
+}
+
+.auth-screen.ui-fade-in {
+  opacity: 0;
+}
+
+.auth-screen.ui-fade-in.ui-fade-in-active {
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+
 .auth-screen {
   position: absolute;
   inset: 0;

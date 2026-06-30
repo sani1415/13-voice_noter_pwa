@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="bn" dir="ltr">
+<html lang="bn" dir="ltr" class="boot-pending">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -23,10 +23,13 @@
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
   <style>
     html, body { margin: 0; background: #f2ede6; }
+    html.boot-pending #main-shell:not(.hidden),
+    html.boot-pending #screen-auth:not(.hidden) { opacity: 0; }
     #boot-splash {
       position: fixed; inset: 0; z-index: 99999;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: #f2ede6; transition: opacity 0.25s ease;
+      background: #f2ede6;
+      transition: opacity 0.45s ease;
     }
     #boot-splash.boot-splash--hide { opacity: 0; pointer-events: none; }
     #boot-splash svg { margin-bottom: 14px; }
@@ -34,6 +37,7 @@
       font-family: system-ui, sans-serif; font-size: 15px; font-weight: 600;
       color: #2c2418; letter-spacing: 0.02em;
     }
+    .boot-reveal { opacity: 1 !important; transition: opacity 0.45s ease; }
   </style>
 </head>
 <body>

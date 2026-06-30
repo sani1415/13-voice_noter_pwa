@@ -545,13 +545,43 @@ function clearAppSession() {
   } catch { /* */ }
 }
 
-function showAuthGate() {
-  if (mainShell) mainShell.classList.add('hidden');
-  if (screenAuth) screenAuth.classList.remove('hidden');
+let _sessionTransition = false;
+let _bootTransitionDone = false;
+
+function resetAuthForm() {
+  if (authPassword) authPassword.value = '';
+  if (authUsername) authUsername.value = '';
+  setAuthSheetMessage('', false);
+}
+
+function showAuthGate({ animate = false } = {}) {
+  if (screenSettings?.classList.contains('active')) screenSettings.classList.remove('active');
+  if (screenEditor?.classList.contains('active')) screenEditor.classList.remove('active');
+  stopEditorPeriodicSave();
+  resetRecording();
+  if (mainShell) {
+    mainShell.classList.add('hidden');
+    mainShell.classList.remove('ui-fade-out', 'boot-reveal', 'ui-fade-in', 'ui-fade-in-active');
+  }
+  if (screenAuth) {
+    screenAuth.classList.remove('hidden', 'ui-fade-out');
+    if (animate) {
+      screenAuth.classList.add('ui-fade-in');
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => screenAuth.classList.add('ui-fade-in-active'));
+      });
+    } else {
+      screenAuth.classList.remove('ui-fade-in', 'ui-fade-in-active');
+    }
+  }
+  resetAuthForm();
 }
 
 function hideAuthGate() {
-  if (screenAuth) screenAuth.classList.add('hidden');
+  if (screenAuth) {
+    screenAuth.classList.add('hidden');
+    screenAuth.classList.remove('ui-fade-in', 'ui-fade-in-active', 'ui-fade-out');
+  }
   if (mainShell) mainShell.classList.remove('hidden');
 }
 
@@ -656,23 +686,33 @@ function guidePinChange() {
 }
 
 async function exitAppSession() {
-  notes = {};
-  folders = {};
-  currentNoteId = null;
-  currentFolderId = null;
-  pendingFolderId = null;
-  resetLocalEditorAfterImport();
-  if (sb) {
-    try {
-      await sb.auth.signOut();
-    } catch { /* */ }
+  if (_sessionTransition) return;
+  _sessionTransition = true;
+  try {
+    if (mainShell && !mainShell.classList.contains('hidden')) {
+      mainShell.classList.add('ui-fade-out');
+      await new Promise(r => setTimeout(r, 320));
+    }
+    notes = {};
+    folders = {};
+    currentNoteId = null;
+    currentFolderId = null;
+    pendingFolderId = null;
+    resetLocalEditorAfterImport();
+    if (sb) {
+      try {
+        await sb.auth.signOut();
+      } catch { /* */ }
+    }
+    clearAppSession();
+    updateListHeader();
+    updateListSortButton();
+    renderNotesList();
+    updateCloudSyncSummary();
+    showAuthGate({ animate: true });
+  } finally {
+    _sessionTransition = false;
   }
-  clearAppSession();
-  showAuthGate();
-  updateListHeader();
-  updateListSortButton();
-  renderNotesList();
-  updateCloudSyncSummary();
 }
 
 async function initSupabase() {
@@ -683,8 +723,13 @@ async function initSupabase() {
     });
     sb.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
+        if (_sessionTransition) return;
         clearAppSession();
-        showAuthGate();
+        notes = {};
+        folders = {};
+        renderNotesList();
+        updateCloudSyncSummary();
+        showAuthGate({ animate: true });
       }
     });
     const { data: { session } } = await sb.auth.getSession();
@@ -2879,7 +2924,7 @@ async function confirmAndSignOut() {
   });
   if (!ok) return;
   await exitAppSession();
-  showToast('সাইন আউট হয়েছে', 'info');
+  setTimeout(() => showToast('সাইন আউট হয়েছে', 'info'), 180);
 }
 
 on(authSignOutBtn, 'click', confirmAndSignOut);
@@ -3447,11 +3492,25 @@ function bootstrapFromLocalCache() {
 /* ══════════════════════════════════════════════════
    Boot splash (TWA / slow network — instant branded paint)
 ══════════════════════════════════════════════════ */
+async function finishBootTransition() {
+  if (_bootTransitionDone) return;
+  _bootTransitionDone = true;
+  document.documentElement.classList.remove('boot-pending');
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  const target = mainShell && !mainShell.classList.contains('hidden')
+    ? mainShell
+    : screenAuth && !screenAuth.classList.contains('hidden')
+      ? screenAuth
+      : null;
+  if (target) target.classList.add('boot-reveal');
+  dismissBootSplash();
+}
+
 function dismissBootSplash() {
   const el = document.getElementById('boot-splash');
   if (!el || el.classList.contains('boot-splash--hide')) return;
   el.classList.add('boot-splash--hide');
-  setTimeout(() => el.remove(), 280);
+  setTimeout(() => el.remove(), 480);
 }
 
 /* ══════════════════════════════════════════════════
@@ -3459,7 +3518,7 @@ function dismissBootSplash() {
 ══════════════════════════════════════════════════ */
 loadPrefs();
 applyPrefs();
-setTimeout(dismissBootSplash, 4500);
+setTimeout(finishBootTransition, 8000);
 loadVoiceInputMode();
 syncVoiceModeUi();
 syncCreateFabMenu();
@@ -3480,13 +3539,12 @@ updateListSortButton();
 renderNotesList();
 updateCloudSyncSummary();
 history.replaceState({ screen: 'list' }, '');
-if (bootedFromCache) dismissBootSplash();
 
 void (async () => {
   try {
     await initSupabase();
   } finally {
-    dismissBootSplash();
+    await finishBootTransition();
   }
 })();
 
