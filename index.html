@@ -21,6 +21,18 @@
   <link rel="stylesheet" href="style.css">
   <link rel="preload" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
   <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"></noscript>
+  <script>
+    (() => {
+      try {
+        const params = new URLSearchParams(location.search);
+        const androidShell = params.get('app') === 'android' || localStorage.getItem('vn-android-app') === '1';
+        if (androidShell) {
+          document.documentElement.classList.add('android-shell');
+          localStorage.setItem('vn-android-app', '1');
+        }
+      } catch { /* ignore early shell detection errors */ }
+    })();
+  </script>
   <style>
     html, body { margin: 0; background: #f2ede6; }
     html.boot-pending #main-shell:not(.hidden),
@@ -38,6 +50,8 @@
       color: #2c2418; letter-spacing: 0.02em;
     }
     .boot-reveal { opacity: 1 !important; transition: opacity 0.45s ease; }
+    html.android-shell #boot-splash { transition-duration: 0.18s; }
+    html.android-shell .boot-reveal { transition-duration: 0.18s; }
   </style>
 </head>
 <body>

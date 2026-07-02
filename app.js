@@ -3510,7 +3510,8 @@ function dismissBootSplash() {
   const el = document.getElementById('boot-splash');
   if (!el || el.classList.contains('boot-splash--hide')) return;
   el.classList.add('boot-splash--hide');
-  setTimeout(() => el.remove(), 480);
+  const delay = document.documentElement.classList.contains('android-shell') ? 220 : 480;
+  setTimeout(() => el.remove(), delay);
 }
 
 /* ══════════════════════════════════════════════════
@@ -3518,7 +3519,8 @@ function dismissBootSplash() {
 ══════════════════════════════════════════════════ */
 loadPrefs();
 applyPrefs();
-setTimeout(finishBootTransition, 8000);
+const androidShellBoot = document.documentElement.classList.contains('android-shell');
+setTimeout(finishBootTransition, androidShellBoot ? 1400 : 8000);
 loadVoiceInputMode();
 syncVoiceModeUi();
 syncCreateFabMenu();
@@ -3540,6 +3542,10 @@ renderNotesList();
 updateCloudSyncSummary();
 history.replaceState({ screen: 'list' }, '');
 
+if (androidShellBoot && bootedFromCache) {
+  requestAnimationFrame(() => setTimeout(finishBootTransition, 120));
+}
+
 void (async () => {
   try {
     await initSupabase();
@@ -3549,14 +3555,19 @@ void (async () => {
 })();
 
 if ('serviceWorker' in navigator) {
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    refreshing = true;
-    window.location.reload();
-  });
+  let updateNoticeShown = false;
+  function notifyServiceWorkerUpdate() {
+    if (updateNoticeShown) return;
+    updateNoticeShown = true;
+    if (document.visibilityState === 'hidden' && !isInsideAndroidApp()) {
+      window.location.reload();
+      return;
+    }
+    console.info('[ServiceWorker] Update ready; it will apply on the next app open.');
+  }
+  navigator.serviceWorker.addEventListener('controllerchange', notifyServiceWorkerUpdate);
   navigator.serviceWorker.addEventListener('message', event => {
-    if (event.data?.type === 'APP_UPDATED') window.location.reload();
+    if (event.data?.type === 'APP_UPDATED') notifyServiceWorkerUpdate();
   });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => reg.update()).catch(console.warn);
