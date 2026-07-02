@@ -547,6 +547,7 @@ function clearAppSession() {
 
 let _sessionTransition = false;
 let _bootTransitionDone = false;
+const BOOT_STARTED_AT = Date.now();
 
 function resetAuthForm() {
   if (authPassword) authPassword.value = '';
@@ -3495,14 +3496,12 @@ function bootstrapFromLocalCache() {
 async function finishBootTransition() {
   if (_bootTransitionDone) return;
   _bootTransitionDone = true;
-  document.documentElement.classList.remove('boot-pending');
+  const minSplashMs = document.documentElement.classList.contains('android-shell') ? 3000 : 900;
+  const remaining = minSplashMs - (Date.now() - BOOT_STARTED_AT);
+  if (remaining > 0) await new Promise(resolve => setTimeout(resolve, remaining));
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  const target = mainShell && !mainShell.classList.contains('hidden')
-    ? mainShell
-    : screenAuth && !screenAuth.classList.contains('hidden')
-      ? screenAuth
-      : null;
-  if (target) target.classList.add('boot-reveal');
+  document.documentElement.classList.add('boot-ready');
+  document.documentElement.classList.remove('boot-pending');
   dismissBootSplash();
 }
 
@@ -3510,7 +3509,7 @@ function dismissBootSplash() {
   const el = document.getElementById('boot-splash');
   if (!el || el.classList.contains('boot-splash--hide')) return;
   el.classList.add('boot-splash--hide');
-  const delay = document.documentElement.classList.contains('android-shell') ? 220 : 480;
+  const delay = document.documentElement.classList.contains('android-shell') ? 720 : 720;
   setTimeout(() => el.remove(), delay);
 }
 
@@ -3520,7 +3519,7 @@ function dismissBootSplash() {
 loadPrefs();
 applyPrefs();
 const androidShellBoot = document.documentElement.classList.contains('android-shell');
-setTimeout(finishBootTransition, androidShellBoot ? 1400 : 8000);
+setTimeout(finishBootTransition, androidShellBoot ? 4200 : 8000);
 loadVoiceInputMode();
 syncVoiceModeUi();
 syncCreateFabMenu();
@@ -3541,10 +3540,6 @@ updateListSortButton();
 renderNotesList();
 updateCloudSyncSummary();
 history.replaceState({ screen: 'list' }, '');
-
-if (androidShellBoot && bootedFromCache) {
-  requestAnimationFrame(() => setTimeout(finishBootTransition, 120));
-}
 
 void (async () => {
   try {
