@@ -2536,17 +2536,22 @@ html[data-list-density="detailed"] .note-card-preview {
 /* ═══ ইউটিলিটি ═══ */
 .hidden { display: none !important; }
 
-/* ═══ ডেস্কটপ প্রিভিউ (মোবাইল ফ্রেম) ═══ */
+/* ═══ ট্যাব/ডেস্কটপ: পুরো স্ক্রিন (ফোন-ফ্রেম নেই) ═══ */
 @media (min-width: 480px) {
-  body { background: #0f1520; display: flex; align-items: center; justify-content: center; }
+  body {
+    background: var(--bg);
+  }
   #app {
-    position: relative;
-    width: 390px;
-    height: 844px;
-    max-height: 100vh;
-    border-radius: 40px;
+    position: fixed;
+    top: var(--app-top, 0px);
+    left: 0;
+    right: 0;
+    width: auto;
+    height: var(--app-height, 100dvh);
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
     overflow: hidden;
-    box-shadow: 0 40px 100px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08);
   }
 }
 
@@ -2936,14 +2941,11 @@ html.keyboard-open .segments-row {
 
 @media (min-width: 480px) {
   body {
-    background:
-      radial-gradient(circle at 20% 10%, rgba(255, 190, 111, 0.22), transparent 32%),
-      radial-gradient(circle at 82% 18%, rgba(93, 165, 238, 0.18), transparent 34%),
-      #080d17;
+    background: var(--bg);
   }
   #app {
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 40px 120px rgba(0,0,0,0.72), 0 0 0 12px rgba(255,255,255,0.025);
+    border: none;
+    box-shadow: none;
   }
 }
 
@@ -3663,20 +3665,11 @@ html[data-theme="dark"] .replace-banner { color: #fbcf7a; }
 /* টোস্ট-ইনফো — যেকোনো থিমে পড়া যায় এমন গাঢ় পিল */
 .toast.toast-info { background: #2b2620; color: #f5efe4; }
 
-/* ডেস্কটপ ফোন-ফ্রেম প্রিভিউ */
+/* ট্যাব/ডেস্কটপ — ফোন-ফ্রেম ছাড়া পূর্ণ স্ক্রিন */
 @media (min-width: 480px) {
-  body {
-    background:
-      radial-gradient(120% 60% at 50% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 50%),
-      #ece3d4;
-  }
-  html[data-theme="dark"] body,
-  html[data-theme="dark"][data-accent] body { background: #0c0a07; }
+  body { background: var(--bg); }
   #app {
-    border: 1px solid var(--chrome-border);
-    box-shadow: 0 40px 90px -30px rgba(40, 28, 14, 0.55), 0 0 0 10px rgba(60, 45, 25, 0.04);
+    border: none;
+    box-shadow: none;
   }
-}
-@media (min-width: 480px) and (prefers-color-scheme: dark) {
-  html[data-theme="system"] body { background: #0c0a07; }
 }
