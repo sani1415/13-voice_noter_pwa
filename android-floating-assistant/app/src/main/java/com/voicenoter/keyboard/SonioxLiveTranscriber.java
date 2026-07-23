@@ -172,8 +172,11 @@ public class SonioxLiveTranscriber {
                     config.put("audio_format", "pcm_s16le");
                     config.put("sample_rate", SAMPLE_RATE);
                     config.put("num_channels", 1);
-                    config.put("language_hints", new JSONArray(new String[]{languageHint(language)}));
-                    config.put("language_hints_strict", true);
+                    String hint = languageHint(language);
+                    if (!hint.isEmpty()) {
+                        config.put("language_hints", new JSONArray(new String[]{hint}));
+                        config.put("language_hints_strict", true);
+                    }
                     config.put("enable_endpoint_detection", true);
                     socket.send(config.toString());
                     wsReady.set(true);
@@ -408,8 +411,8 @@ public class SonioxLiveTranscriber {
     }
 
     private String languageHint(String language) {
-        if (MainActivity.LANG_EN.equals(language)) return "en";
-        if (MainActivity.LANG_AR.equals(language)) return "ar";
-        return "bn";
+        if (LanguageRegistry.AUTO.equals(language)) return "";
+        return LanguageRegistry.supports(language)
+            ? language.toLowerCase(java.util.Locale.US) : "bn";
     }
 }

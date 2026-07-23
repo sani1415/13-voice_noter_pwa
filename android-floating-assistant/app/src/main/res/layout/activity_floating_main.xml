@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/screen_bg"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="20dp"
+        android:paddingTop="24dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="28dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Voice Noter Floating"
+            android:textColor="@color/text_main"
+            android:textSize="25sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Use any keyboard. The floating mic types into the active field."
+            android:textColor="@color/text_muted"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/setup_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:textColor="@color/primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView style="@style/FieldLabel" android:text="SETUP &amp; BUBBLE" />
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/btn_mic_permission" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Microphone" android:textAllCaps="false" />
+            <Button android:id="@+id/btn_overlay_permission" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Overlay" android:textAllCaps="false" />
+            <Button android:id="@+id/btn_accessibility" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Text insert" android:textAllCaps="false" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/btn_start_assistant" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Start" android:textAllCaps="false" />
+            <Button android:id="@+id/btn_reset_bubble" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Bring back" android:textAllCaps="false" />
+            <Button android:id="@+id/btn_close_assistant" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="Close" android:textAllCaps="false" />
+        </LinearLayout>
+
+        <TextView style="@style/FieldLabel" android:text="VOICE" />
+
+        <RadioGroup
+            android:id="@+id/mode_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <RadioButton android:id="@+id/mode_record" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Record" />
+            <RadioButton android:id="@+id/mode_live" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Live" />
+        </RadioGroup>
+
+        <TextView style="@style/FieldLabel" android:text="BUBBLE VISIBILITY" />
+
+        <RadioGroup
+            android:id="@+id/visibility_group"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <RadioButton android:id="@+id/visibility_always" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Always" />
+            <RadioButton android:id="@+id/visibility_text_field" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Only in text area" />
+        </RadioGroup>
+
+        <TextView style="@style/HelperText" android:text="Text-area mode needs Accessibility. The bubble remains visible during an active voice session." />
+
+        <Button
+            android:id="@+id/selected_language"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:textAllCaps="false" />
+
+        <TextView
+            android:id="@+id/quick_language_summary"
+            style="@style/HelperText"
+            android:layout_marginTop="5dp" />
+
+        <Button
+            android:id="@+id/btn_manage_languages"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="Manage quick languages"
+            android:textAllCaps="false" />
+
+        <TextView style="@style/FieldLabel" android:text="SESSION SAFETY" />
+
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+            <EditText
+                android:id="@+id/max_session_input"
+                android:layout_width="0dp"
+                android:layout_height="50dp"
+                android:layout_weight="1"
+                android:hint="15"
+                android:inputType="number"
+                android:maxLength="4"
+                android:singleLine="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="8dp" android:paddingEnd="8dp" android:text="minutes" />
+            <Button android:id="@+id/btn_save_session" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Save" android:textAllCaps="false" />
+        </LinearLayout>
+        <TextView style="@style/HelperText" android:text="Leave blank for unlimited. Default: 15 minutes." />
+
+        <TextView style="@style/FieldLabel" android:text="BACKEND" />
+
+        <EditText
+            android:id="@+id/endpoint_input"
+            android:layout_width="match_parent"
+            android:layout_height="50dp"
+            android:inputType="textUri"
+            android:singleLine="true" />
+        <Button android:id="@+id/btn_save_endpoint" android:layout_width="match_parent" android:layout_height="48dp" android:text="Save endpoint" android:textAllCaps="false" />
+    </LinearLayout>
+</ScrollView>

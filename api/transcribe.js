@@ -8,30 +8,69 @@ const ALLOWED_MODELS = [
   'gemini-3.1-pro-preview',
 ];
 const LANGUAGE_CONFIG = {
+  auto: { label: 'the language or languages actually spoken', punctuation: 'language-appropriate' },
+  af: { label: 'Afrikaans', punctuation: 'Afrikaans' },
+  ar: { label: 'Arabic', punctuation: 'Arabic' },
   bn: {
     label: 'Bangla/Bengali',
     punctuation: 'Bengali',
   },
+  bg: { label: 'Bulgarian', punctuation: 'Bulgarian' },
+  zh: { label: 'Chinese', punctuation: 'Chinese' },
+  hr: { label: 'Croatian', punctuation: 'Croatian' },
+  cs: { label: 'Czech', punctuation: 'Czech' },
+  da: { label: 'Danish', punctuation: 'Danish' },
+  nl: { label: 'Dutch', punctuation: 'Dutch' },
   en: {
     label: 'English',
     punctuation: 'English',
   },
-  ar: {
-    label: 'Arabic',
-    punctuation: 'Arabic',
-  },
+  et: { label: 'Estonian', punctuation: 'Estonian' },
+  fi: { label: 'Finnish', punctuation: 'Finnish' },
+  fr: { label: 'French', punctuation: 'French' },
+  de: { label: 'German', punctuation: 'German' },
+  el: { label: 'Greek', punctuation: 'Greek' },
+  he: { label: 'Hebrew', punctuation: 'Hebrew' },
+  hi: { label: 'Hindi', punctuation: 'Hindi' },
+  hu: { label: 'Hungarian', punctuation: 'Hungarian' },
+  id: { label: 'Indonesian', punctuation: 'Indonesian' },
+  it: { label: 'Italian', punctuation: 'Italian' },
+  ja: { label: 'Japanese', punctuation: 'Japanese' },
+  ko: { label: 'Korean', punctuation: 'Korean' },
+  lv: { label: 'Latvian', punctuation: 'Latvian' },
+  lt: { label: 'Lithuanian', punctuation: 'Lithuanian' },
+  no: { label: 'Norwegian', punctuation: 'Norwegian' },
+  pl: { label: 'Polish', punctuation: 'Polish' },
+  pt: { label: 'Portuguese', punctuation: 'Portuguese' },
+  ro: { label: 'Romanian', punctuation: 'Romanian' },
+  ru: { label: 'Russian', punctuation: 'Russian' },
+  sr: { label: 'Serbian', punctuation: 'Serbian' },
+  sk: { label: 'Slovak', punctuation: 'Slovak' },
+  sl: { label: 'Slovenian', punctuation: 'Slovenian' },
+  es: { label: 'Spanish', punctuation: 'Spanish' },
+  sw: { label: 'Swahili', punctuation: 'Swahili' },
+  sv: { label: 'Swedish', punctuation: 'Swedish' },
+  th: { label: 'Thai', punctuation: 'Thai' },
+  tr: { label: 'Turkish', punctuation: 'Turkish' },
+  uk: { label: 'Ukrainian', punctuation: 'Ukrainian' },
+  vi: { label: 'Vietnamese', punctuation: 'Vietnamese' },
 };
 
 function buildTranscribePrompt(language) {
   const config = LANGUAGE_CONFIG[language] || LANGUAGE_CONFIG.bn;
-  return [
+  const instructions = [
     'Transcribe only the clear human speech in the audio.',
     `The expected language is ${config.label}.`,
     'Do not translate, summarize, explain, or add any extra text.',
     `Add only natural ${config.punctuation} punctuation where appropriate.`,
     'If there is no clear speech, background noise only, silence, or unintelligible audio, return exactly: __NO_SPEECH__',
     'Return only the transcript text or __NO_SPEECH__.',
-  ].join('\n');
+  ];
+  if (language === 'auto') {
+    instructions.splice(2, 0,
+      'Detect the spoken language automatically and preserve natural code-switching between languages.');
+  }
+  return instructions.join('\n');
 }
 
 function cleanTranscript(text) {

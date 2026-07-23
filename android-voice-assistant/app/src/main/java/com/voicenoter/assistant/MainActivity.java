@@ -20,6 +20,15 @@ public class MainActivity extends Activity {
     static final String KEY_ENDPOINT = "endpoint";
     static final String KEY_LAYOUT_LANG = "layout_lang";
     static final String KEY_VOICE_INPUT_MODE = "voice_input_mode";
+    /** Max continuous Record/Live length in seconds; 0 = unlimited. */
+    static final String KEY_MAX_SESSION_SEC = "max_session_sec";
+    /** Default unlimited — blank field means no limit. */
+    static final int DEFAULT_MAX_SESSION_SEC = 0;
+
+    /** Bubble visibility: always, or only when a text field is focused. */
+    static final String KEY_BUBBLE_VISIBILITY = "bubble_visibility";
+    static final String BUBBLE_ALWAYS = "always";
+    static final String BUBBLE_TEXT_FIELD = "text_field";
 
     static final String LANG_BN = "bn";
     static final String LANG_EN = "en";
@@ -35,12 +44,14 @@ public class MainActivity extends Activity {
 
     private SharedPreferences prefs;
     private EditText endpointInput;
+    private EditText maxSessionInput;
     private TextView overlayStatus;
     private TextView a11yStatus;
     private TextView micStatus;
     private TextView modeHelp;
     private Button langBn, langEn, langAr;
     private Button modeRecord, modeLive;
+    private Button visAlways, visText;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -54,12 +65,15 @@ public class MainActivity extends Activity {
         micStatus = findViewById(R.id.mic_status);
         modeHelp = findViewById(R.id.mode_help);
         endpointInput = findViewById(R.id.endpoint_input);
+        maxSessionInput = findViewById(R.id.max_session_input);
 
         langBn = findViewById(R.id.lang_bn);
         langEn = findViewById(R.id.lang_en);
         langAr = findViewById(R.id.lang_ar);
         modeRecord = findViewById(R.id.mode_record);
         modeLive = findViewById(R.id.mode_live);
+        visAlways = findViewById(R.id.vis_always);
+        visText = findViewById(R.id.vis_text);
 
         findViewById(R.id.btn_overlay).setOnClickListener(v -> openOverlaySettings());
         findViewById(R.id.btn_a11y).setOnClickListener(v -> openAccessibilitySettings());
@@ -70,18 +84,23 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "Floating mic hidden", Toast.LENGTH_SHORT).show();
         });
         findViewById(R.id.btn_save_endpoint).setOnClickListener(v -> saveEndpoint());
+        findViewById(R.id.btn_save_max_session).setOnClickListener(v -> saveMaxSession());
 
         langBn.setOnClickListener(v -> selectLanguage(LANG_BN));
         langEn.setOnClickListener(v -> selectLanguage(LANG_EN));
         langAr.setOnClickListener(v -> selectLanguage(LANG_AR));
         modeRecord.setOnClickListener(v -> selectMode(MODE_RECORD));
         modeLive.setOnClickListener(v -> selectMode(MODE_LIVE));
+        visAlways.setOnClickListener(v -> selectBubbleVisibility(BUBBLE_ALWAYS));
+        visText.setOnClickListener(v -> selectBubbleVisibility(BUBBLE_TEXT_FIELD));
 
         endpointInput.setHint(DEFAULT_ENDPOINT);
         endpointInput.setText(prefs.getString(KEY_ENDPOINT, DEFAULT_ENDPOINT));
+        loadMaxSessionField();
 
         refreshLanguageChips();
         refreshModeChips();
+        refreshVisibilityChips();
         maybeRequestNotifications();
     }
 
@@ -93,19 +112,13 @@ public class MainActivity extends Activity {
 
     private void refreshPermissionStatus() {
         boolean overlay = Settings.canDrawOverlays(this);
-        overlayStatus.setText(overlay
-            ? "Overlay: allowed — floating mic can appear over other apps"
-            : "Overlay: required — Android will open Settings");
+        overlayStatus.setText(overlay ? "Overlay · On" : "Overlay · Off");
 
         boolean a11y = TextInsertAccessibilityService.isRunning();
-        a11yStatus.setText(a11y
-            ? "Auto-insert: on — text goes into the focused field"
-            : "Auto-insert: off — enable Accessibility for Voice Assistant");
+        a11yStatus.setText(a11y ? "Auto-insert · On" : "Auto-insert · Off");
 
         boolean mic = hasMic();
-        micStatus.setText(mic
-            ? "Microphone: granted"
-            : "Microphone: required for voice typing");
+        micStatus.setText(mic ? "Microphone · On" : "Microphone · Off");
     }
 
     private void openOverlaySettings() {
@@ -154,8 +167,13 @@ public class MainActivity extends Activity {
             return;
         }
         if (!TextInsertAccessibilityService.isRunning()) {
+            boolean textOnly = BUBBLE_TEXT_FIELD.equals(
+                prefs.getString(KEY_BUBBLE_VISIBILITY, BUBBLE_ALWAYS)
+            );
             Toast.makeText(this,
-                "Tip: enable Accessibility for auto-insert (clipboard still works)",
+                textOnly
+                    ? "Enable Accessibility — needed for In text visibility + auto-insert"
+                    : "Tip: enable Accessibility for auto-insert (clipboard still works)",
                 Toast.LENGTH_LONG).show();
         }
         FloatingBubbleService.start(this);
@@ -173,6 +191,43 @@ public class MainActivity extends Activity {
         Toast.makeText(this, "Endpoint saved", Toast.LENGTH_SHORT).show();
     }
 
+    private void loadMaxSessionField() {
+        int sec = prefs.getInt(KEY_MAX_SESSION_SEC, DEFAULT_MAX_SESSION_SEC);
+        if (sec <= 0) {
+            maxSessionInput.setText("");
+        } else {
+            int minutes = Math.max(1, (int) Math.ceil(sec / 60.0));
+            maxSessionInput.setText(String.valueOf(minutes));
+        }
+    }
+
+    private void saveMaxSession() {
+        String raw = maxSessionInput.getText() != null
+            ? maxSessionInput.getText().toString().trim()
+            : "";
+        int seconds = 0;
+        if (!raw.isEmpty()) {
+            try {
+                int minutes = Integer.parseInt(raw);
+                if (minutes < 0) minutes = 0;
+                if (minutes > 24 * 60) minutes = 24 * 60; // cap 24h
+                seconds = minutes * 60;
+                if (minutes > 0) {
+                    maxSessionInput.setText(String.valueOf(minutes));
+                } else {
+                    maxSessionInput.setText("");
+                }
+            } catch (NumberFormatException e) {
+                Toast.makeText(this, "Enter minutes as a number", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        prefs.edit().putInt(KEY_MAX_SESSION_SEC, seconds).apply();
+        Toast.makeText(this,
+            seconds <= 0 ? "Max session: unlimited" : "Max session: " + (seconds / 60) + " min",
+            Toast.LENGTH_SHORT).show();
+    }
+
     private void selectLanguage(String lang) {
         prefs.edit().putString(KEY_LAYOUT_LANG, lang).apply();
         refreshLanguageChips();
@@ -181,6 +236,22 @@ public class MainActivity extends Activity {
     private void selectMode(String mode) {
         prefs.edit().putString(KEY_VOICE_INPUT_MODE, mode).apply();
         refreshModeChips();
+    }
+
+    private void selectBubbleVisibility(String mode) {
+        prefs.edit().putString(KEY_BUBBLE_VISIBILITY, mode).apply();
+        refreshVisibilityChips();
+        if (BUBBLE_TEXT_FIELD.equals(mode) && !TextInsertAccessibilityService.isRunning()) {
+            Toast.makeText(this,
+                "Enable Accessibility for In text visibility",
+                Toast.LENGTH_LONG).show();
+        } else {
+            Toast.makeText(this,
+                BUBBLE_TEXT_FIELD.equals(mode)
+                    ? "Bubble: only in text fields"
+                    : "Bubble: always visible",
+                Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void refreshLanguageChips() {
@@ -196,9 +267,15 @@ public class MainActivity extends Activity {
         setChip(modeLive, MODE_LIVE.equals(mode));
         if (modeHelp != null) {
             modeHelp.setText(MODE_LIVE.equals(mode)
-                ? "Live: real-time via Soniox. Text inserts as you speak (Accessibility)."
-                : "Record: tap mic to start/stop, then text inserts into the focused field.");
+                ? "Live inserts as you speak"
+                : "Record then insert when done");
         }
+    }
+
+    private void refreshVisibilityChips() {
+        String mode = prefs.getString(KEY_BUBBLE_VISIBILITY, BUBBLE_ALWAYS);
+        setChip(visAlways, BUBBLE_ALWAYS.equals(mode));
+        setChip(visText, BUBBLE_TEXT_FIELD.equals(mode));
     }
 
     private void setChip(Button button, boolean selected) {

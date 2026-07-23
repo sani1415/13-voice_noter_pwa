@@ -7,6 +7,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.os.Bundle;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.text.InputType;
 import android.view.accessibility.AccessibilityEvent;
@@ -24,6 +26,15 @@ public class VoiceAccessibilityService extends AccessibilityService {
     private String liveSuffix = "";
     private int liveStart = 0;
     private boolean liveSessionActive = false;
+    private String liveProviderText = "";
+    private int liveProviderAnchorLength = 0;
+    private boolean liveUserRebased = false;
+    private String liveExpectedFieldText = null;
+    private int liveVisibleLength = 0;
+    private String staleProviderText = null;
+    private final Handler focusHandler = new Handler(Looper.getMainLooper());
+    private final Runnable focusCheck = this::publishEditableFocus;
+    private Boolean lastPublishedFocus;
 
     @Override
     protected void onServiceConnected() {
@@ -35,15 +46,32 @@ public class VoiceAccessibilityService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null) return;
         AccessibilityNodeInfo source = event.getSource();
-        if (source == null) return;
-        if (source.isEditable() && !source.isPassword() && !isPasswordInput(source.getInputType())) {
+        if (source != null && isUsableEditor(source) && !source.isPassword() && !isPasswordInput(source.getInputType())) {
             rememberFocus(source);
         }
+        if (source != null && event.getEventType() == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
+            handlePossibleLiveUserEdit(source);
+        }
+        if (FloatingVoiceService.isRunning()) {
+            focusHandler.removeCallbacks(focusCheck);
+            focusHandler.postDelayed(focusCheck, 120);
+        }
+    }
+
+    private void publishEditableFocus() {
+        AccessibilityNodeInfo focus = findCurrentEditableFocus();
+        boolean focused = focus != null && isUsableEditor(focus)
+            && !focus.isPassword() && !isPasswordInput(focus.getInputType());
+        if (focus != null) focus.recycle();
+        if (lastPublishedFocus != null && lastPublishedFocus == focused) return;
+        lastPublishedFocus = focused;
+        FloatingVoiceService.onEditableFocusChanged(focused);
     }
     @Override public void onInterrupt() { }
 
     @Override
     public void onDestroy() {
+        focusHandler.removeCallbacks(focusCheck);
         finishLiveInsertion();
         recycleLastFocus();
         if (active.get() == this) active.clear();
@@ -59,6 +87,10 @@ public class VoiceAccessibilityService extends AccessibilityService {
             return false;
         }
         return service.insertIntoFocusedField(transcript);
+    }
+
+    public static boolean isRunning() {
+        return active.get() != null;
     }
 
     public static boolean beginLiveInsertion(Context context) {
@@ -80,7 +112,7 @@ public class VoiceAccessibilityService extends AccessibilityService {
 
     private boolean insertIntoFocusedField(String transcript) {
         AccessibilityNodeInfo focus = findCurrentEditableFocus();
-        if (focus == null || !focus.isEditable()) {
+        if (focus == null || !isUsableEditor(focus)) {
             copy(this, transcript);
             Toast.makeText(this, "No editable field found — transcript copied", Toast.LENGTH_LONG).show();
             return false;
@@ -95,8 +127,7 @@ public class VoiceAccessibilityService extends AccessibilityService {
         if (focus.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
             && focus.performAction(AccessibilityNodeInfo.ACTION_PASTE)) return true;
 
-        CharSequence oldText = focus.getText();
-        String existing = oldText == null ? "" : oldText.toString();
+        String existing = fieldText(focus);
         int start = focus.getTextSelectionStart();
         int end = focus.getTextSelectionEnd();
         if (start < 0 || start > existing.length()) start = existing.length();
@@ -119,11 +150,10 @@ public class VoiceAccessibilityService extends AccessibilityService {
     private boolean beginLiveInsertionInternal() {
         finishLiveInsertionInternal();
         AccessibilityNodeInfo focus = findCurrentEditableFocus();
-        if (focus == null || !focus.isEditable() || focus.isPassword()
+        if (focus == null || !isUsableEditor(focus) || focus.isPassword()
             || isPasswordInput(focus.getInputType())) return false;
 
-        CharSequence currentText = focus.getText();
-        String existing = currentText == null ? "" : currentText.toString();
+        String existing = fieldText(focus);
         int start = focus.getTextSelectionStart();
         int end = focus.getTextSelectionEnd();
         if (start < 0 || start > existing.length()) start = existing.length();
@@ -134,18 +164,60 @@ public class VoiceAccessibilityService extends AccessibilityService {
         liveSuffix = existing.substring(end);
         liveStart = start;
         liveSessionActive = true;
+        liveProviderText = "";
+        liveProviderAnchorLength = 0;
+        liveUserRebased = false;
+        liveExpectedFieldText = existing;
+        liveVisibleLength = 0;
+        staleProviderText = null;
         return true;
     }
 
     private boolean updateLiveTranscriptInternal(String transcript) {
         if (!liveSessionActive || liveTarget == null || !liveTarget.refresh()) return false;
-        String combined = livePrefix + transcript + liveSuffix;
+        String current = fieldText(liveTarget);
+        int selectionStart = liveTarget.getTextSelectionStart();
+        int selectionEnd = liveTarget.getTextSelectionEnd();
+        if (selectionStart >= 0 && selectionEnd >= 0 && selectionStart != selectionEnd) {
+            return true;
+        }
+        if (liveVisibleLength > 0 && selectionStart >= 0
+            && (selectionStart < liveStart || selectionStart > liveStart + liveVisibleLength)) {
+            rebaseLiveAtUserCursor(current, selectionStart);
+            staleProviderText = transcript;
+            return true;
+        }
+        if (liveVisibleLength > 0 && liveStart >= 0 && liveStart <= current.length()) {
+            int segmentEnd = Math.min(current.length(), liveStart + liveVisibleLength);
+            String actualSegment = current.substring(liveStart, segmentEnd);
+            String expectedSegment = liveExpectedFieldText != null
+                && liveStart + liveVisibleLength <= liveExpectedFieldText.length()
+                ? liveExpectedFieldText.substring(liveStart, liveStart + liveVisibleLength) : actualSegment;
+            if (!actualSegment.equals(expectedSegment)) {
+                rebaseLiveAtUserCursor(current, selectionStart);
+                staleProviderText = transcript;
+                return true;
+            }
+        }
+        if (staleProviderText != null) {
+            if (staleProviderText.equals(transcript)) return true;
+            staleProviderText = null;
+        }
+        liveProviderText = transcript;
+        String visibleTranscript = transcript;
+        if (liveUserRebased) {
+            int anchor = Math.min(liveProviderAnchorLength, transcript.length());
+            visibleTranscript = transcript.substring(anchor);
+        }
+        String combined = livePrefix + visibleTranscript + liveSuffix;
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
         boolean updated = liveTarget.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
         if (updated) {
+            liveExpectedFieldText = combined;
+            liveVisibleLength = visibleTranscript.length();
             Bundle selection = new Bundle();
-            int cursor = liveStart + transcript.length();
+            int cursor = liveStart + visibleTranscript.length();
             selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, cursor);
             selection.putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, cursor);
             liveTarget.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, selection);
@@ -163,7 +235,51 @@ public class VoiceAccessibilityService extends AccessibilityService {
         livePrefix = "";
         liveSuffix = "";
         liveStart = 0;
+        liveProviderText = "";
+        liveProviderAnchorLength = 0;
+        liveUserRebased = false;
+        liveExpectedFieldText = null;
+        liveVisibleLength = 0;
+        staleProviderText = null;
         return wasActive;
+    }
+
+    private void handlePossibleLiveUserEdit(AccessibilityNodeInfo source) {
+        if (!liveSessionActive || source == null || !isUsableEditor(source)) return;
+        String current = fieldText(source);
+        if (liveExpectedFieldText != null && liveExpectedFieldText.equals(current)) return;
+
+        int cursor = source.getTextSelectionStart();
+        if (cursor < 0 || cursor > current.length()) cursor = current.length();
+        rebaseLiveAtUserCursor(current, cursor);
+        staleProviderText = liveProviderText;
+        if (liveTarget != null) liveTarget.recycle();
+        liveTarget = AccessibilityNodeInfo.obtain(source);
+    }
+
+    private void rebaseLiveAtUserCursor(String current, int cursor) {
+        if (current == null) current = "";
+        if (cursor < 0 || cursor > current.length()) cursor = current.length();
+        livePrefix = current.substring(0, cursor);
+        liveSuffix = current.substring(cursor);
+        liveStart = cursor;
+        liveVisibleLength = 0;
+        liveProviderAnchorLength = liveProviderText.length();
+        liveUserRebased = true;
+        liveExpectedFieldText = current;
+    }
+
+    private static String fieldText(AccessibilityNodeInfo node) {
+        if (node == null) return "";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && node.isShowingHintText()) return "";
+        CharSequence value = node.getText();
+        String text = value == null ? "" : value.toString();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            CharSequence hint = node.getHintText();
+            if (hint != null && !hint.toString().isEmpty()
+                && text.equalsIgnoreCase(hint.toString()) && text.length() <= 64) return "";
+        }
+        return text;
     }
 
     private AccessibilityNodeInfo findCurrentEditableFocus() {
@@ -180,7 +296,7 @@ public class VoiceAccessibilityService extends AccessibilityService {
         }
 
         if (lastEditableFocus != null && lastEditableFocus.refresh()
-            && lastEditableFocus.isEditable() && lastEditableFocus.isVisibleToUser()) {
+            && isUsableEditor(lastEditableFocus) && lastEditableFocus.isVisibleToUser()) {
             return lastEditableFocus;
         }
         recycleLastFocus();
@@ -190,11 +306,35 @@ public class VoiceAccessibilityService extends AccessibilityService {
     private AccessibilityNodeInfo editableFocusFrom(AccessibilityNodeInfo root) {
         if (root == null) return null;
         AccessibilityNodeInfo focus = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (focus != null && focus.isEditable()) {
+        if (focus != null && isUsableEditor(focus)) {
+            rememberFocus(focus);
+            return focus;
+        }
+        focus = findEditorRecursively(root);
+        if (focus != null) {
             rememberFocus(focus);
             return focus;
         }
         return null;
+    }
+
+    private AccessibilityNodeInfo findEditorRecursively(AccessibilityNodeInfo node) {
+        if (node == null) return null;
+        if (node.isVisibleToUser() && isUsableEditor(node)
+            && (node.isFocused() || node.getTextSelectionStart() >= 0)) return node;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = findEditorRecursively(node.getChild(i));
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private boolean isUsableEditor(AccessibilityNodeInfo node) {
+        if (node == null) return false;
+        if (node.isEditable()) return true;
+        int actions = node.getActions();
+        return node.isFocused() && ((actions & AccessibilityNodeInfo.ACTION_SET_TEXT) != 0
+            || (actions & AccessibilityNodeInfo.ACTION_PASTE) != 0);
     }
 
     private void rememberFocus(AccessibilityNodeInfo node) {

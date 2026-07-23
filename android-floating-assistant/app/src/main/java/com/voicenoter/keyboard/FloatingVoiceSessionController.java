@@ -1,4 +1,4 @@
-package com.voicenoter.assistant;
+package com.voicenoter.keyboard;
 
 import android.Manifest;
 import android.app.Activity;
@@ -32,7 +32,7 @@ import java.util.concurrent.Executors;
  * Record → /api/transcribe and Live (Soniox) sessions for the floating bubble.
  * Finished text is copied to the clipboard (v1 — no accessibility insert yet).
  */
-final class VoiceSessionController {
+final class FloatingVoiceSessionController {
     private static final String MIME_TYPE = "audio/mp4";
 
     interface UiCallback {
@@ -61,7 +61,7 @@ final class VoiceSessionController {
     private boolean liveInsertedViaA11y;
     private final Runnable sessionLimitRunnable;
 
-    VoiceSessionController(Context context, UiCallback ui) {
+    FloatingVoiceSessionController(Context context, UiCallback ui) {
         this.appContext = context.getApplicationContext();
         this.ui = ui;
         this.sessionLimitRunnable = () -> {
@@ -278,7 +278,7 @@ final class VoiceSessionController {
             if (session != voiceSessionGeneration) return;
             isTranscribing = false;
             if (text != null && !text.isEmpty()) {
-                deliverResult(VoicePunctuation.apply(text));
+                deliverResult(VoicePunctuation.applyForLanguage(text, currentLanguage()));
             } else if (error != null) {
                 ui.onStatus(error);
             }
@@ -305,7 +305,7 @@ final class VoiceSessionController {
         final int session = ++voiceSessionGeneration;
         ui.onLiveConnecting();
         armSessionLimit();
-        TextInsertAccessibilityService.beginLive();
+        liveInsertedViaA11y = VoiceAccessibilityService.beginLiveInsertion(appContext);
 
         liveTranscriber = new SonioxLiveTranscriber();
         liveTranscriber.start(appContext, endpoint, currentLanguage(), new SonioxLiveTranscriber.Listener() {
@@ -335,9 +335,12 @@ final class VoiceSessionController {
                         isLiveConnecting = false;
                         ui.onLiveListening();
                     }
-                    liveFinalText = VoicePunctuation.apply(finalText != null ? finalText : "");
+                    liveFinalText = VoicePunctuation.applyForLanguage(
+                        finalText != null ? finalText : "", currentLanguage());
                     String partial = partialText != null ? partialText : "";
-                    if (TextInsertAccessibilityService.updateLive(liveFinalText, partial)) {
+                    String streaming = VoicePunctuation.applyForLanguage(
+                        (liveFinalText + partial).trim(), currentLanguage());
+                    if (VoiceAccessibilityService.updateLiveTranscript(streaming)) {
                         liveInsertedViaA11y = true;
                     }
                 });
@@ -351,7 +354,7 @@ final class VoiceSessionController {
                     isLiveActive = false;
                     liveTranscriber = null;
                     cancelSessionLimit();
-                    TextInsertAccessibilityService.endLive();
+                    VoiceAccessibilityService.finishLiveInsertion();
                     liveInsertedViaA11y = false;
                     ui.onStatus(message != null && !message.isEmpty() ? message : "Live error");
                     ui.onIdle(isLiveMode());
@@ -366,7 +369,7 @@ final class VoiceSessionController {
                     isLiveActive = false;
                     liveTranscriber = null;
                     cancelSessionLimit();
-                    TextInsertAccessibilityService.endLive();
+                    VoiceAccessibilityService.finishLiveInsertion();
                     ui.onIdle(isLiveMode());
                 });
             }
@@ -383,12 +386,11 @@ final class VoiceSessionController {
         liveFinalText = "";
         boolean alreadyInserted = liveInsertedViaA11y;
         liveInsertedViaA11y = false;
-        TextInsertAccessibilityService.endLive();
+        VoiceAccessibilityService.finishLiveInsertion();
         if (active != null) active.stop();
         if (deliver && text != null && !text.trim().isEmpty()) {
             if (alreadyInserted) {
                 // Live text already written into the focused field.
-                clipboardBackup(text.trim());
                 ui.onStatus("Inserted");
             } else {
                 deliverResult(text.trim());
@@ -399,15 +401,15 @@ final class VoiceSessionController {
 
     /** Prefer Accessibility insert into focused field; clipboard is always kept as backup. */
     private void deliverResult(String text) {
-        boolean inserted = TextInsertAccessibilityService.insertAtCursor(text);
-        clipboardBackup(text);
+        boolean inserted = VoiceAccessibilityService.insertTranscript(appContext, text);
         if (inserted) {
             Toast.makeText(appContext, "Inserted into text field", Toast.LENGTH_SHORT).show();
             ui.onStatus("Inserted");
         } else {
+            clipboardBackup(text);
             String preview = text.length() > 80 ? text.substring(0, 80) + "…" : text;
             Toast.makeText(appContext,
-                TextInsertAccessibilityService.isRunning()
+                VoiceAccessibilityService.isEnabled(appContext)
                     ? "No text field focused — copied:\n" + preview
                     : "Enable Accessibility for auto-insert — copied:\n" + preview,
                 Toast.LENGTH_LONG).show();
@@ -452,12 +454,7 @@ final class VoiceSessionController {
 
     private String currentLanguage() {
         String lang = prefs().getString(MainActivity.KEY_LAYOUT_LANG, MainActivity.LANG_BN);
-        if (!MainActivity.LANG_BN.equals(lang)
-            && !MainActivity.LANG_EN.equals(lang)
-            && !MainActivity.LANG_AR.equals(lang)) {
-            return MainActivity.LANG_BN;
-        }
-        return lang;
+        return LanguageRegistry.supports(lang) ? lang : MainActivity.LANG_BN;
     }
 
     private String getEndpoint() {

@@ -45,6 +45,8 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
         (prefs, key) -> {
             if (MainActivity.KEY_VOICE_INPUT_MODE.equals(key)) {
                 mainHandler.post(this::refreshModeFromPrefs);
+            } else if (MainActivity.KEY_BUBBLE_VISIBILITY.equals(key)) {
+                mainHandler.post(this::applyBubbleVisibility);
             }
         };
 
@@ -59,10 +61,13 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
     private VoiceSessionController voice;
     private SharedPreferences prefs;
     private boolean bubbleAdded;
+    private boolean textFieldFocused;
+    private static FloatingBubbleService instance;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        instance = this;
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         voice = new VoiceSessionController(this, this);
         prefs = getSharedPreferences(MainActivity.PREFS, MODE_PRIVATE);
@@ -82,6 +87,7 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
         addBubble();
         voice.prefetchSonioxIfNeeded();
         onIdle(voice.isLiveMode());
+        applyBubbleVisibility();
     }
 
     @Override
@@ -95,6 +101,7 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
 
     @Override
     public void onDestroy() {
+        if (instance == this) instance = null;
         if (prefs != null) {
             prefs.unregisterOnSharedPreferenceChangeListener(prefsListener);
         }
@@ -109,6 +116,20 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
         return null;
     }
 
+    static boolean isRunning() {
+        return instance != null;
+    }
+
+    /** Called from AccessibilityService when editable focus changes. */
+    static void onEditableFocusChanged(boolean focused) {
+        FloatingBubbleService svc = instance;
+        if (svc == null) return;
+        svc.mainHandler.post(() -> {
+            svc.textFieldFocused = focused;
+            svc.applyBubbleVisibility();
+        });
+    }
+
     static void start(Context context) {
         Intent i = new Intent(context, FloatingBubbleService.class);
         i.setAction(ACTION_START);
@@ -121,6 +142,25 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
 
     static void stop(Context context) {
         context.stopService(new Intent(context, FloatingBubbleService.class));
+    }
+
+    private boolean isTextFieldVisibilityMode() {
+        if (prefs == null) return false;
+        return MainActivity.BUBBLE_TEXT_FIELD.equals(
+            prefs.getString(MainActivity.KEY_BUBBLE_VISIBILITY, MainActivity.BUBBLE_ALWAYS)
+        );
+    }
+
+    private void applyBubbleVisibility() {
+        if (bubbleView == null) return;
+        boolean show;
+        if (!isTextFieldVisibilityMode()) {
+            show = true;
+        } else {
+            boolean busy = voice != null && voice.isBusy();
+            show = textFieldFocused || busy;
+        }
+        bubbleView.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
     private void addBubble() {
@@ -174,13 +214,22 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
 
     private void setupDragAndTap() {
         final int touchSlop = dp(8);
+        final int longPressMs = 450;
         micWrap.setOnTouchListener(new View.OnTouchListener() {
             private int startX;
             private int startY;
             private float touchX;
             private float touchY;
             private boolean dragging;
-            private long downAt;
+            private boolean longPressFired;
+            private final Runnable longPressRunnable = () -> {
+                if (dragging || longPressFired || voice == null) return;
+                longPressFired = true;
+                if (micWrap != null) {
+                    micWrap.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+                }
+                voice.toggleMode();
+            };
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -191,13 +240,16 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
                         touchX = event.getRawX();
                         touchY = event.getRawY();
                         dragging = false;
-                        downAt = System.currentTimeMillis();
+                        longPressFired = false;
+                        mainHandler.removeCallbacks(longPressRunnable);
+                        mainHandler.postDelayed(longPressRunnable, longPressMs);
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = event.getRawX() - touchX;
                         float dy = event.getRawY() - touchY;
                         if (!dragging && (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop)) {
                             dragging = true;
+                            mainHandler.removeCallbacks(longPressRunnable);
                         }
                         if (dragging) {
                             layoutParams.x = startX + Math.round(dx);
@@ -206,16 +258,13 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        long held = System.currentTimeMillis() - downAt;
-                        if (!dragging) {
-                            if (held >= 450) {
-                                voice.toggleMode();
-                            } else {
-                                voice.toggleVoice();
-                            }
+                        mainHandler.removeCallbacks(longPressRunnable);
+                        if (!dragging && !longPressFired) {
+                            voice.toggleVoice();
                         }
                         return true;
                     case MotionEvent.ACTION_CANCEL:
+                        mainHandler.removeCallbacks(longPressRunnable);
                         return true;
                     default:
                         return false;
@@ -307,26 +356,31 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
         } else {
             styleMic(COLOR_RECORD_SOFT, COLOR_RECORD, R.drawable.ic_mic, false, false);
         }
+        applyBubbleVisibility();
     }
 
     @Override
     public void onRecording() {
         styleMic(COLOR_RECORD, COLOR_ACTIVE_ICON, R.drawable.ic_mic, false, false);
+        applyBubbleVisibility();
     }
 
     @Override
     public void onTranscribing() {
         styleMic(COLOR_RECORD, COLOR_ACTIVE_ICON, R.drawable.ic_mic, false, true);
+        applyBubbleVisibility();
     }
 
     @Override
     public void onLiveConnecting() {
         styleMic(COLOR_LIVE, COLOR_ACTIVE_ICON, R.drawable.ic_live, true, false);
+        applyBubbleVisibility();
     }
 
     @Override
     public void onLiveListening() {
         styleMic(COLOR_LIVE, COLOR_ACTIVE_ICON, R.drawable.ic_live, true, false);
+        applyBubbleVisibility();
     }
 
     @Override

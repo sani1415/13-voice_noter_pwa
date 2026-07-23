@@ -28,6 +28,9 @@ public class MainActivity extends Activity {
     static final String KEY_VOICE_ONLY = "voice_only_mode";
     static final String KEY_LAYOUT_LANG = "layout_lang";
     static final String KEY_VOICE_INPUT_MODE = "voice_input_mode";
+    static final String KEY_BUBBLE_VISIBILITY = "bubble_visibility";
+    static final String BUBBLE_ALWAYS = "always";
+    static final String BUBBLE_TEXT_FIELD = "text_field";
     static final String KEY_THEME = "kbd_theme";
     static final String KEY_ENABLED_LANGS = "enabled_langs";
     static final String KEY_PRESETS = "preset_messages";
@@ -35,6 +38,8 @@ public class MainActivity extends Activity {
     static final String KEY_HOLD_TO_TALK = "hold_to_talk";
     static final String KEY_PHONETIC_BN = "phonetic_bn";
     static final String KEY_KEY_SIZE = "key_size";
+    static final String KEY_QUICK_LANGS = "quick_languages";
+    static final String KEY_MAX_SESSION_SEC = "max_session_sec";
     /** One-shot: v0.4.1 turns phonetic off so Bangla shows native letters by default. */
     static final String KEY_COMFORT_FIX_0401 = "comfort_fix_0_4_1";
 
@@ -57,6 +62,7 @@ public class MainActivity extends Activity {
     static final String SIZE_LARGE = "large";
 
     static final String DEFAULT_ENDPOINT = "https://notes.idarah786.com";
+    static final int DEFAULT_MAX_SESSION_SEC = 15 * 60;
     static final String DEFAULT_ENABLED_LANGS = "bn,en,ar";
     static final String DEFAULT_THEME = THEME_WARM;
     static final String DEFAULT_KEY_SIZE = SIZE_MEDIUM;

@@ -9,202 +9,211 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="18dp">
+        android:paddingLeft="12dp"
+        android:paddingRight="12dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="12dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/app_name"
-            android:textSize="26sp"
+            android:textSize="20sp"
             android:textStyle="bold"
-            android:textColor="@color/text_main"
-            android:paddingTop="8dp" />
+            android:textColor="@color/text_main" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Floating mic on top of any app. Keep Gboard — text inserts into the focused field."
-            android:textSize="14sp"
+            android:text="Floating mic · inserts into focused field"
+            android:textSize="12sp"
             android:textColor="@color/text_muted"
-            android:paddingTop="4dp"
-            android:paddingBottom="6dp" />
+            android:paddingTop="2dp"
+            android:paddingBottom="8dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/bg_card"
-            android:padding="18dp"
-            android:layout_marginTop="14dp">
+            android:padding="12dp">
 
-            <TextView style="@style/SectionTitle" android:text="SETUP" />
+            <TextView style="@style/SectionTitleCompact" android:text="SETUP" />
 
-            <TextView
-                android:id="@+id/overlay_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Overlay permission…"
-                android:textSize="13sp"
-                android:textColor="@color/text_muted"
-                android:paddingBottom="8dp" />
-
-            <Button
-                android:id="@+id/btn_overlay"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="Allow draw over other apps"
-                android:textAllCaps="false"
-                android:textColor="@color/primary"
-                android:textSize="14sp"
-                android:background="@drawable/btn_secondary" />
-
-            <TextView
-                android:id="@+id/a11y_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Accessibility…"
-                android:textSize="13sp"
-                android:textColor="@color/text_muted"
-                android:paddingTop="14dp"
-                android:paddingBottom="8dp" />
-
-            <Button
-                android:id="@+id/btn_a11y"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="Enable auto-insert (Accessibility)"
-                android:textAllCaps="false"
-                android:textColor="@color/primary"
-                android:textSize="14sp"
-                android:background="@drawable/btn_secondary" />
-
-            <TextView
-                android:id="@+id/mic_status"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Microphone…"
-                android:textSize="13sp"
-                android:textColor="@color/text_muted"
-                android:paddingTop="14dp"
-                android:paddingBottom="8dp" />
-
-            <Button
-                android:id="@+id/btn_mic"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="Grant microphone"
-                android:textAllCaps="false"
-                android:textColor="@color/on_primary"
-                android:textSize="14sp"
-                android:background="@drawable/btn_primary" />
-
-            <Button
-                android:id="@+id/btn_start_bubble"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="Show floating mic"
-                android:textAllCaps="false"
-                android:textColor="@color/on_primary"
-                android:textSize="14sp"
-                android:background="@drawable/btn_primary"
-                android:layout_marginTop="14dp" />
-
-            <Button
-                android:id="@+id/btn_stop_bubble"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="Hide floating mic"
-                android:textAllCaps="false"
-                android:textColor="@color/primary"
-                android:textSize="14sp"
-                android:background="@drawable/btn_secondary"
-                android:layout_marginTop="10dp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_card"
-            android:padding="18dp"
-            android:layout_marginTop="14dp">
-
-            <TextView style="@style/SectionTitle" android:text="VOICE" />
-
-            <TextView style="@style/FieldLabel" android:text="Language" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:baselineAligned="false">
-
-                <Button android:id="@+id/lang_bn" style="@style/ChipPlaceholder" android:text="বাংলা" />
-                <Button android:id="@+id/lang_en" style="@style/ChipPlaceholder" android:text="English" />
-                <Button android:id="@+id/lang_ar" style="@style/ChipPlaceholder" android:text="العربية" />
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    android:id="@+id/overlay_status"
+                    style="@style/SettingLabel"
+                    android:text="Overlay" />
+                <Button
+                    android:id="@+id/btn_overlay"
+                    style="@style/CompactBtnSecondary"
+                    android:text="Allow" />
             </LinearLayout>
 
-            <TextView style="@style/FieldLabel" android:text="Input mode" />
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    android:id="@+id/a11y_status"
+                    style="@style/SettingLabel"
+                    android:text="Auto-insert" />
+                <Button
+                    android:id="@+id/btn_a11y"
+                    style="@style/CompactBtnSecondary"
+                    android:text="Enable" />
+            </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:baselineAligned="false">
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    android:id="@+id/mic_status"
+                    style="@style/SettingLabel"
+                    android:text="Microphone" />
+                <Button
+                    android:id="@+id/btn_mic"
+                    style="@style/CompactBtnPrimary"
+                    android:text="Grant" />
+            </LinearLayout>
 
-                <Button android:id="@+id/mode_record" style="@style/ChipPlaceholder" android:text="Record" />
-                <Button android:id="@+id/mode_live" style="@style/ChipPlaceholder" android:text="Live" />
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    style="@style/SettingLabel"
+                    android:text="Floating mic" />
+                <Button
+                    android:id="@+id/btn_start_bubble"
+                    style="@style/CompactBtnPrimary"
+                    android:layout_width="64dp"
+                    android:layout_marginEnd="6dp"
+                    android:text="Show" />
+                <Button
+                    android:id="@+id/btn_stop_bubble"
+                    style="@style/CompactBtnSecondary"
+                    android:layout_width="64dp"
+                    android:text="Hide" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    style="@style/SettingLabel"
+                    android:text="Visibility" />
+                <Button
+                    android:id="@+id/vis_always"
+                    style="@style/ChipInline"
+                    android:text="Always" />
+                <Button
+                    android:id="@+id/vis_text"
+                    style="@style/ChipInline"
+                    android:layout_marginEnd="0dp"
+                    android:text="In text" />
+            </LinearLayout>
+
+            <TextView
+                style="@style/SectionTitleCompact"
+                android:text="VOICE"
+                android:paddingTop="10dp" />
+
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    style="@style/SettingLabel"
+                    android:text="Language" />
+                <Button
+                    android:id="@+id/lang_bn"
+                    style="@style/ChipInline"
+                    android:text="বাংলা" />
+                <Button
+                    android:id="@+id/lang_en"
+                    style="@style/ChipInline"
+                    android:text="EN" />
+                <Button
+                    android:id="@+id/lang_ar"
+                    style="@style/ChipInline"
+                    android:layout_marginEnd="0dp"
+                    android:text="AR" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    style="@style/SettingLabel"
+                    android:text="Input mode" />
+                <Button
+                    android:id="@+id/mode_record"
+                    style="@style/ChipInline"
+                    android:text="Record" />
+                <Button
+                    android:id="@+id/mode_live"
+                    style="@style/ChipInline"
+                    android:layout_marginEnd="0dp"
+                    android:text="Live" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    style="@style/SettingLabel"
+                    android:text="Max (min)" />
+                <EditText
+                    android:id="@+id/max_session_input"
+                    android:layout_width="56dp"
+                    android:layout_height="34dp"
+                    android:background="@drawable/bg_input"
+                    android:gravity="center"
+                    android:hint="∞"
+                    android:inputType="number"
+                    android:maxLength="4"
+                    android:paddingLeft="4dp"
+                    android:paddingRight="4dp"
+                    android:singleLine="true"
+                    android:textSize="13sp"
+                    android:textColor="@color/text_main"
+                    android:layout_marginEnd="6dp" />
+                <Button
+                    android:id="@+id/btn_save_max_session"
+                    style="@style/CompactBtnPrimary"
+                    android:text="Save" />
             </LinearLayout>
 
             <TextView
                 android:id="@+id/mode_help"
-                style="@style/HelperText"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingTop="8dp" />
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:background="@drawable/bg_card"
-            android:padding="18dp"
-            android:layout_marginTop="14dp"
-            android:layout_marginBottom="18dp">
-
-            <TextView style="@style/SectionTitle" android:text="SERVER" />
-
-            <TextView style="@style/FieldLabel" android:text="PWA base URL" />
-
-            <EditText
-                android:id="@+id/endpoint_input"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:background="@drawable/bg_input"
-                android:padding="12dp"
-                android:singleLine="true"
-                android:textSize="14sp"
-                android:textColor="@color/text_main"
-                android:inputType="textUri" />
-
-            <Button
-                android:id="@+id/btn_save_endpoint"
-                android:layout_width="match_parent"
-                android:layout_height="46dp"
-                android:text="Save endpoint"
-                android:textAllCaps="false"
-                android:textColor="@color/on_primary"
-                android:textSize="14sp"
-                android:background="@drawable/btn_primary"
-                android:layout_marginTop="10dp" />
+                android:paddingBottom="2dp"
+                android:textSize="11sp"
+                android:textColor="@color/text_muted" />
 
             <TextView
-                style="@style/HelperText"
+                style="@style/SectionTitleCompact"
+                android:text="SERVER"
+                android:paddingTop="8dp" />
+
+            <LinearLayout style="@style/CompactRow">
+                <TextView
+                    style="@style/SettingLabel"
+                    android:layout_width="56dp"
+                    android:layout_weight="0"
+                    android:text="URL" />
+                <EditText
+                    android:id="@+id/endpoint_input"
+                    android:layout_width="0dp"
+                    android:layout_height="34dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_input"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:singleLine="true"
+                    android:textSize="12sp"
+                    android:textColor="@color/text_main"
+                    android:inputType="textUri"
+                    android:layout_marginEnd="6dp" />
+                <Button
+                    android:id="@+id/btn_save_endpoint"
+                    style="@style/CompactBtnPrimary"
+                    android:text="Save" />
+            </LinearLayout>
+
+            <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:paddingTop="10dp"
-                android:text="Tap mic to start/stop. Long-press mic to switch Record ↔ Live. With Accessibility on, text inserts into the focused field (clipboard kept as backup)." />
+                android:paddingTop="4dp"
+                android:textSize="11sp"
+                android:textColor="@color/text_muted"
+                android:text="Tap mic · long-press Record↔Live · blank max = unlimited" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

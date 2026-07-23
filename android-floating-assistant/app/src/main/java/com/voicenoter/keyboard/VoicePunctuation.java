@@ -72,6 +72,15 @@ public final class VoicePunctuation {
         return result;
     }
 
+    public static String applyForLanguage(String text, String language) {
+        if (MainActivity.LANG_BN.equals(language)
+            || MainActivity.LANG_EN.equals(language)
+            || LanguageRegistry.AUTO.equals(language)) {
+            return apply(text);
+        }
+        return text;
+    }
+
     public static String normalizeLangHint(String layoutLang) {
         if (layoutLang == null) return "";
         return layoutLang.toLowerCase(Locale.US);
