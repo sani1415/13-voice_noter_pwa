@@ -245,18 +245,12 @@ const authPassword              = $('auth-password');
 const authPinToggle               = $('auth-pin-toggle');
 const authSigninBtn             = $('auth-signin-btn');
 const authSheetMessage          = $('auth-sheet-message');
-const accountCurrentPin         = $('account-current-pin');
 const accountNewPin             = $('account-new-pin');
 const accountConfirmPin         = $('account-confirm-pin');
 const accountChangePinBtn       = $('account-change-pin-btn');
 const accountPinMessage         = $('account-pin-message');
 const accountPinRequiredAlert   = $('account-pin-required-alert');
 const adminUserCreateBlock      = $('admin-user-create-block');
-const adminNewUsername          = $('admin-new-username');
-const adminNewPin               = $('admin-new-pin');
-const adminNewPinToggle         = $('admin-new-pin-toggle');
-const adminCreateUserBtn        = $('admin-create-user-btn');
-const adminCreateMessage        = $('admin-create-message');
 const adminRefreshUsersBtn      = $('admin-refresh-users-btn');
 const adminUsersList            = $('admin-users-list');
 const cloudSyncSummary          = $('cloud-sync-summary');
@@ -461,12 +455,6 @@ function setAuthSheetMessage(text, isError) {
   authSheetMessage.classList.toggle('auth-sheet-message-error', !!isError);
 }
 
-function setAdminCreateMessage(text, isError) {
-  if (!adminCreateMessage) return;
-  adminCreateMessage.textContent = text || '';
-  adminCreateMessage.classList.toggle('auth-sheet-message-error', !!isError);
-}
-
 function setAccountPinMessage(text, isError) {
   if (!accountPinMessage) return;
   accountPinMessage.textContent = text || '';
@@ -476,12 +464,10 @@ function setAccountPinMessage(text, isError) {
 function userRpcMessage(code) {
   const map = {
     invalid_session: 'সেশন শেষ — আবার লগইন করুন',
+    not_authenticated: 'লগইন নেই — আবার সাইন ইন করুন',
     not_admin: 'শুধু অ্যাডমিন এই কাজ করতে পারবেন',
-    pin_too_short: 'পিন কমপক্ষে ৪ অক্ষর দিন',
-    invalid_current_pin: 'বর্তমান পিন ঠিক নয়',
-    duplicate_username: 'এই ইউজারনেম আগে থেকেই আছে',
-    user_not_found: 'ইউজার পাওয়া যায়নি',
-    user_disabled: 'এই ইউজার বন্ধ করা আছে',
+    not_found: 'ইউজার পাওয়া যায়নি',
+    invalid_user: 'ইউজার পাওয়া যায়নি',
     cannot_disable_self: 'নিজের অ্যাকাউন্ট বন্ধ করা যাবে না',
   };
   return map[code] || code || 'কাজটি সম্পন্ন হয়নি';
@@ -619,26 +605,30 @@ function renderAdminUsers(users) {
 
   adminUsersList.innerHTML = '';
   for (const user of list) {
+    const isSelf = user.user_id === appUserId;
+    const isAdmin = user.role === 'admin';
+    const isActive = user.is_active !== false;
+    const label = user.display_name || user.email || 'নামহীন';
     const row = document.createElement('div');
-    row.className = 'settings-user-card' + (user.is_active === false ? ' is-disabled' : '');
+    row.className = 'settings-user-card' + (isActive ? '' : ' is-disabled');
     row.innerHTML = `
       <div class="settings-user-card-main">
         <div class="settings-user-card-title">
-          <span>${esc(user.username || 'নামহীন')}</span>
-          ${user.is_admin ? '<span class="settings-user-badge">Admin</span>' : ''}
-          ${user.is_active === false ? '<span class="settings-user-badge settings-user-badge-muted">বন্ধ</span>' : ''}
-      ${user.must_change_pin ? '<span class="settings-user-badge settings-user-badge-warn">পিন বদলাবে</span>' : ''}
+          <span>${esc(label)}</span>
+          ${isAdmin ? '<span class="settings-user-badge">Admin</span>' : ''}
+          ${isSelf ? '<span class="settings-user-badge settings-user-badge-muted">আপনি</span>' : ''}
+          ${!isActive ? '<span class="settings-user-badge settings-user-badge-muted">বন্ধ</span>' : ''}
         </div>
-        <p class="settings-user-card-sub">শেষ লগইন: ${esc(formatUserDate(user.last_login_at))}</p>
+        <p class="settings-user-card-sub">${esc(user.email || '')}</p>
       </div>
       <div class="settings-user-actions">
-        <button type="button" class="settings-mini-btn" data-user-action="reset-pin">পিন রিসেট</button>
-        <button type="button" class="settings-mini-btn ${user.is_active === false ? '' : 'settings-mini-btn-danger'}" data-user-action="toggle-active">
-          ${user.is_active === false ? 'চালু' : 'বন্ধ'}
-        </button>
+        ${isSelf
+          ? ''
+          : `<button type="button" class="settings-mini-btn ${isActive ? 'settings-mini-btn-danger' : ''}" data-user-action="toggle-active">
+              ${isActive ? 'বন্ধ' : 'চালু'}
+            </button>`}
       </div>`;
 
-    row.querySelector('[data-user-action="reset-pin"]')?.addEventListener('click', () => resetUserPin(user));
     row.querySelector('[data-user-action="toggle-active"]')?.addEventListener('click', () => toggleUserActive(user));
     adminUsersList.appendChild(row);
   }
@@ -650,15 +640,51 @@ async function loadAdminUsers() {
     adminUsersList.innerHTML = '';
     return;
   }
-  adminUsersList.innerHTML = '<p class="settings-user-empty">নতুন Voice Notyper user Supabase Dashboard → Authentication ও <code>vn_profiles</code> টেবিল থেকে যোগ করুন।</p>';
+  if (!sb) {
+    adminUsersList.innerHTML = '<p class="settings-user-empty">ক্লায়েন্ট লোড হয়নি</p>';
+    return;
+  }
+  adminUsersList.innerHTML = '<p class="settings-user-empty">লোড হচ্ছে…</p>';
+  const { data, error } = await sb
+    .from('vn_profiles')
+    .select('user_id, email, display_name, role, is_active')
+    .order('role', { ascending: true })
+    .order('email', { ascending: true });
+  if (error) {
+    adminUsersList.innerHTML = `<p class="settings-user-empty">${esc(error.message || 'লোড ব্যর্থ')}</p>`;
+    return;
+  }
+  const list = Array.isArray(data) ? data.slice() : [];
+  list.sort((a, b) => {
+    const ar = a.role === 'admin' ? 0 : 1;
+    const br = b.role === 'admin' ? 0 : 1;
+    if (ar !== br) return ar - br;
+    return String(a.email || '').localeCompare(String(b.email || ''), 'bn');
+  });
+  renderAdminUsers(list);
 }
 
-async function resetUserPin(_user) {
-  showToast('পিন রিসেট এখন Supabase Dashboard থেকে করুন', 'info');
-}
-
-async function toggleUserActive(_user) {
-  showToast('user active/inactive এখন vn_profiles.is_active থেকে করুন', 'info');
+async function toggleUserActive(user) {
+  if (!sb || !appIsAdmin || !user?.user_id) return;
+  if (user.user_id === appUserId) {
+    showToast(userRpcMessage('cannot_disable_self'), 'warning');
+    return;
+  }
+  const nextActive = user.is_active === false;
+  const { data, error } = await sb.rpc('vn_admin_set_profile_active', {
+    p_user_id: user.user_id,
+    p_is_active: nextActive,
+  });
+  if (error) {
+    showToast(error.message || 'স্ট্যাটাস বদলাতে ব্যর্থ', 'error');
+    return;
+  }
+  if (data && data.ok === false) {
+    showToast(userRpcMessage(data.error), 'error');
+    return;
+  }
+  showToast(nextActive ? 'ইউজার চালু করা হয়েছে' : 'ইউজার বন্ধ করা হয়েছে', 'success');
+  await loadAdminUsers();
 }
 
 async function enterAppAfterSession() {
@@ -676,14 +702,14 @@ async function enterAppAfterSession() {
   updateCloudSyncSummary();
   if (appIsAdmin) loadAdminUsers();
   showHomeScreen();
-  if (appMustChangePin) showToast('নিরাপত্তার জন্য Settings থেকে পিন বদলে নিন', 'warning');
+  if (appMustChangePin) showToast('নিরাপত্তার জন্য Settings থেকে পাসওয়ার্ড বদলে নিন', 'warning');
 }
 
 function guidePinChange() {
-  setAccountPinMessage('প্রথমে নতুন পিন সেট করুন। বর্তমান পিন লিখে নতুন পিন দিন।', true);
+  setAccountPinMessage('নতুন পাসওয়ার্ড দিন এবং নিশ্চিত করুন।', true);
   openSettingsPage();
   activateSettingsTab('user');
-  setTimeout(() => accountCurrentPin?.focus(), 260);
+  setTimeout(() => accountNewPin?.focus(), 260);
 }
 
 async function exitAppSession() {
@@ -2971,12 +2997,42 @@ on(authSigninBtn, 'click', async () => {
   await enterAppAfterSession();
 });
 
-on(adminCreateUserBtn, 'click', async () => {
-  setAdminCreateMessage('Supabase Dashboard → Authentication ও vn_profiles থেকে user যোগ করুন', true);
-});
-
 on(accountChangePinBtn, 'click', async () => {
-  setAccountPinMessage('পাসওয়ার্ড Supabase Dashboard → Authentication থেকে বদলান', true);
+  if (!sb || !appUserId) {
+    setAccountPinMessage('লগইন নেই — আগে সাইন ইন করুন', true);
+    return;
+  }
+  const newPassword = accountNewPin && accountNewPin.value ? accountNewPin.value : '';
+  const confirmPassword = accountConfirmPin && accountConfirmPin.value ? accountConfirmPin.value : '';
+  if (!newPassword) {
+    setAccountPinMessage('নতুন পাসওয়ার্ড লিখুন', true);
+    accountNewPin?.focus();
+    return;
+  }
+  if (newPassword.length < 6) {
+    setAccountPinMessage('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে', true);
+    accountNewPin?.focus();
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    setAccountPinMessage('নতুন পাসওয়ার্ড দুবার মিলছে না', true);
+    accountConfirmPin?.focus();
+    return;
+  }
+  if (accountChangePinBtn) accountChangePinBtn.disabled = true;
+  setAccountPinMessage('পাসওয়ার্ড আপডেট হচ্ছে…', false);
+  const { error } = await sb.auth.updateUser({ password: newPassword });
+  if (accountChangePinBtn) accountChangePinBtn.disabled = false;
+  if (error) {
+    setAccountPinMessage(error.message || 'পাসওয়ার্ড বদলাতে ব্যর্থ', true);
+    return;
+  }
+  if (accountNewPin) accountNewPin.value = '';
+  if (accountConfirmPin) accountConfirmPin.value = '';
+  appMustChangePin = false;
+  updateCloudSyncSummary();
+  setAccountPinMessage('পাসওয়ার্ড সফলভাবে বদলেছে', false);
+  showToast('পাসওয়ার্ড আপডেট হয়েছে', 'success');
 });
 
 on(adminRefreshUsersBtn, 'click', loadAdminUsers);
@@ -2991,12 +3047,6 @@ on(authPinToggle, 'click', () => {
   if (!authPassword) return;
   authPassword.type = authPassword.type === 'password' ? 'text' : 'password';
   if (authPinToggle) authPinToggle.style.color = authPassword.type === 'text' ? 'var(--accent)' : '';
-});
-
-on(adminNewPinToggle, 'click', () => {
-  if (!adminNewPin) return;
-  adminNewPin.type = adminNewPin.type === 'password' ? 'text' : 'password';
-  if (adminNewPinToggle) adminNewPinToggle.style.color = adminNewPin.type === 'text' ? 'var(--accent)' : '';
 });
 
 document.querySelectorAll('.segmented-control, .settings-list-options').forEach(group => {

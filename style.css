@@ -249,20 +249,18 @@ body {
 }
 
 .auth-logo {
-  margin-bottom: 10px;
+  margin: 0 auto 12px;
 }
 
 .auth-title {
   font-size: 1.3rem;
   font-weight: 700;
-  margin-bottom: 8px;
+  margin: 0 0 20px;
+  text-align: center;
 }
 
 .auth-lead {
-  font-size: 0.88rem;
-  color: var(--hint);
-  line-height: 1.45;
-  margin-bottom: 18px;
+  display: none;
 }
 
 .auth-email-wrap {
@@ -313,6 +311,7 @@ body {
   background: var(--editor-surface);
   border: 2px solid var(--border) !important;
   border-radius: 14px;
+  overflow: hidden;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.06);
 }
 html[data-theme="dark"] .vn-credential-wrap {
@@ -325,6 +324,7 @@ html[data-theme="dark"] .vn-credential-wrap {
 }
 .auth-screen .vn-credential-wrap {
   background: var(--editor-surface);
+  overflow: hidden;
 }
 .vn-credential-input {
   color: var(--text) !important;
@@ -332,6 +332,15 @@ html[data-theme="dark"] .vn-credential-wrap {
   font-size: 16px !important;
   font-weight: 600;
   letter-spacing: 0.03em;
+}
+/* wrap-এর ভিতরে ইনপুটের আলাদা বর্ডার/radius বন্ধ — কোণায় ডবল স্ট্রোক এড়াতে */
+.auth-screen .key-input-wrap .key-input,
+#settings-panel-user .key-input-wrap .key-input,
+.vn-credential-wrap .vn-credential-input {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 .auth-screen .vn-credential-input,
 #settings-panel-user .vn-credential-input {
@@ -2647,6 +2656,7 @@ body {
   height: 58px;
   display: grid;
   place-items: center;
+  margin: 0 auto 12px;
   border-radius: 20px;
   background: linear-gradient(145deg, color-mix(in srgb, var(--accent) 20%, white), color-mix(in srgb, var(--accent) 12%, transparent));
   box-shadow: 0 14px 30px color-mix(in srgb, var(--accent) 24%, transparent);
@@ -2655,10 +2665,7 @@ body {
 .auth-title {
   font-size: 1.55rem;
   letter-spacing: -0.04em;
-}
-
-.auth-lead {
-  color: color-mix(in srgb, var(--hint) 88%, var(--text));
+  text-align: center;
 }
 
 .header {

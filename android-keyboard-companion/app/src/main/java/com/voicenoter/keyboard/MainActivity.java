@@ -31,6 +31,12 @@ public class MainActivity extends Activity {
     static final String KEY_THEME = "kbd_theme";
     static final String KEY_ENABLED_LANGS = "enabled_langs";
     static final String KEY_PRESETS = "preset_messages";
+    static final String KEY_HAPTIC = "haptic_feedback";
+    static final String KEY_HOLD_TO_TALK = "hold_to_talk";
+    static final String KEY_PHONETIC_BN = "phonetic_bn";
+    static final String KEY_KEY_SIZE = "key_size";
+    /** One-shot: v0.4.1 turns phonetic off so Bangla shows native letters by default. */
+    static final String KEY_COMFORT_FIX_0401 = "comfort_fix_0_4_1";
 
     static final String DEFAULT_PRESETS = "[]";
 
@@ -46,19 +52,29 @@ public class MainActivity extends Activity {
     static final String THEME_DARK = "dark";
     static final String THEME_COLORFUL = "colorful";
 
+    static final String SIZE_SMALL = "small";
+    static final String SIZE_MEDIUM = "medium";
+    static final String SIZE_LARGE = "large";
+
     static final String DEFAULT_ENDPOINT = "https://notes.idarah786.com";
     static final String DEFAULT_ENABLED_LANGS = "bn,en,ar";
     static final String DEFAULT_THEME = THEME_WARM;
+    static final String DEFAULT_KEY_SIZE = SIZE_MEDIUM;
+
+    /** Opened from the IME settings gear — Back should leave this task, not open the PWA. */
+    static final String EXTRA_FROM_IME = "from_ime";
 
     private static final int REQ_AUDIO = 1001;
 
     private SharedPreferences prefs;
     private EditText endpointInput;
     private TextView micStatus;
+    private boolean openedFromIme;
 
     private Button langBn, langEn, langAr;
     private Button modeRecord, modeLive;
     private Button themeWarm, themeLight, themeDark, themeColorful;
+    private Button sizeSmall, sizeMedium, sizeLarge;
     private CheckBox chkBn, chkEn, chkAr;
     private TextView modeHelp;
     private View advancedBody;
@@ -70,14 +86,35 @@ public class MainActivity extends Activity {
         setTheme(R.style.AppTheme);
         setContentView(R.layout.activity_main);
         prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        applyComfortFix0401(prefs);
+        openedFromIme = getIntent() != null && getIntent().getBooleanExtra(EXTRA_FROM_IME, false);
 
         bindSetup();
         bindLanguage();
         bindVoiceMode();
         bindVoiceOnly();
+        bindComfortToggles();
+        bindKeySize();
         bindEnabledLanguages();
         bindTheme();
         bindAdvanced();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openedFromIme = intent != null && intent.getBooleanExtra(EXTRA_FROM_IME, false);
+    }
+
+    @Override
+    public void onBackPressed() {
+        // From the keyboard gear: remove this settings task so Back returns to the typing app.
+        if (openedFromIme && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask();
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
@@ -191,9 +228,47 @@ public class MainActivity extends Activity {
 
     private void bindVoiceOnly() {
         Switch voiceOnly = findViewById(R.id.switch_voice_only);
-        voiceOnly.setChecked(prefs.getBoolean(KEY_VOICE_ONLY, true));
+        voiceOnly.setChecked(prefs.getBoolean(KEY_VOICE_ONLY, false));
         voiceOnly.setOnCheckedChangeListener((b, checked) ->
             prefs.edit().putBoolean(KEY_VOICE_ONLY, checked).apply());
+    }
+
+    private void bindComfortToggles() {
+        Switch haptic = findViewById(R.id.switch_haptic);
+        haptic.setChecked(prefs.getBoolean(KEY_HAPTIC, true));
+        haptic.setOnCheckedChangeListener((b, checked) ->
+            prefs.edit().putBoolean(KEY_HAPTIC, checked).apply());
+    }
+
+    /** Existing 0.4.0 installs had phonetic ON; reset once so native Bangla keys show. */
+    static void applyComfortFix0401(SharedPreferences prefs) {
+        if (prefs.getBoolean(KEY_COMFORT_FIX_0401, false)) return;
+        prefs.edit()
+            .putBoolean(KEY_PHONETIC_BN, false)
+            .putBoolean(KEY_COMFORT_FIX_0401, true)
+            .apply();
+    }
+
+    private void bindKeySize() {
+        sizeSmall = findViewById(R.id.size_small);
+        sizeMedium = findViewById(R.id.size_medium);
+        sizeLarge = findViewById(R.id.size_large);
+        sizeSmall.setOnClickListener(v -> selectKeySize(SIZE_SMALL));
+        sizeMedium.setOnClickListener(v -> selectKeySize(SIZE_MEDIUM));
+        sizeLarge.setOnClickListener(v -> selectKeySize(SIZE_LARGE));
+        styleKeySizeChips();
+    }
+
+    private void selectKeySize(String size) {
+        prefs.edit().putString(KEY_KEY_SIZE, size).apply();
+        styleKeySizeChips();
+    }
+
+    private void styleKeySizeChips() {
+        String size = prefs.getString(KEY_KEY_SIZE, DEFAULT_KEY_SIZE);
+        setChip(sizeSmall, SIZE_SMALL.equals(size));
+        setChip(sizeMedium, SIZE_MEDIUM.equals(size));
+        setChip(sizeLarge, SIZE_LARGE.equals(size));
     }
 
     // ---------- Enabled languages ----------

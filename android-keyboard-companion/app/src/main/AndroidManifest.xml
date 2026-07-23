@@ -56,11 +56,14 @@
             </intent-filter>
         </activity>
 
-        <!-- Keyboard settings screen, reached from the PWA via voicenoter://keyboard. -->
+        <!-- Keyboard settings: own task so Back from IME returns to the typing app, not the PWA. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name">
+            android:label="@string/app_name"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.voicenoter.keyboard.settings">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
