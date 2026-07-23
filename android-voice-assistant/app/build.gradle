@@ -1,0 +1,27 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.voicenoter.assistant"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.voicenoter.assistant"
+        minSdk 23
+        targetSdk 35
+        versionCode 4
+        versionName "0.1.3"
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            output.outputFileName = "Voice-Assistant-${variant.versionName}-${variant.buildType.name}.apk"
+        }
+    }
+}
+
+dependencies {
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "androidx.core:core:1.13.1"
+}

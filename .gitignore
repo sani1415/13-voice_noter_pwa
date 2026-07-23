@@ -3,3 +3,21 @@
 .env
 .vercel
 node_modules/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.iml
+.idea/
+
+# Android build & local machine config (all android-* apps)
+**/.gradle/
+**/local.properties
+**/build/
+**/*.apk
+**/*.ap_
+**/*.dex
+**/captures/
+**/.cxx/
+**/app/Untitled
+**/Untitled

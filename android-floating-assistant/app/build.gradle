@@ -1,0 +1,29 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace "com.voicenoter.keyboard"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.voicenoter.floating"
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName "0.1.0"
+    }
+
+    applicationVariants.configureEach { variant ->
+        variant.outputs.configureEach { output ->
+            output.outputFileName = "Voice-Noter-Floating-${variant.versionName}-${variant.buildType.name}.apk"
+        }
+    }
+}
+
+dependencies {
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    implementation "androidx.core:core:1.13.1"
+    // Trusted Web Activity host for the bundled Voice Notes PWA.
+    implementation "com.google.androidbrowserhelper:androidbrowserhelper:2.5.0"
+}

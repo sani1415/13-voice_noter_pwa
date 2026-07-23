@@ -1,0 +1,13 @@
+<resources>
+    <color name="screen_bg">#f7f3ec</color>
+    <color name="card_bg">#ffffff</color>
+    <color name="primary">#2f6f6d</color>
+    <color name="primary_dark">#235754</color>
+    <color name="text_main">#202124</color>
+    <color name="text_muted">#5f6368</color>
+    <color name="stroke">#e3ddd0</color>
+    <color name="chip_bg">#efe9dd</color>
+    <color name="chip_text">#3c4043</color>
+    <color name="success">#2e7d32</color>
+    <color name="on_primary">#ffffff</color>
+</resources>

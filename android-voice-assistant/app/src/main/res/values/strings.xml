@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Voice Assistant</string>
+    <string name="bubble_channel_name">Voice bubble</string>
+    <string name="bubble_channel_desc">Keeps the floating voice button available</string>
+    <string name="notif_title">Voice Assistant is ready</string>
+    <string name="notif_text">Tap the floating mic to dictate into the focused field.</string>
+    <string name="accessibility_service_description">Lets Voice Assistant type dictated text into the focused field of other apps (Gboard stays your keyboard).</string>
+</resources>

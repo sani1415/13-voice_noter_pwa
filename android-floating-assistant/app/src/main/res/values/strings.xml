@@ -1,0 +1,12 @@
+<resources>
+    <string name="floating_accessibility_description">Inserts your voice transcript into the text field you are using. It never reads or inserts into password fields.</string>
+    <string name="app_name">Voice Noter Floating</string>
+    <string name="notes_app_name">Voice Notyper</string>
+    <string name="keyboard_name">Voice Notyper</string>
+    <string name="keyboard_name_en">Voice Notyper (English)</string>
+    <string name="keyboard_name_ar">Voice Notyper (Arabic)</string>
+
+    <!-- Trusted Web Activity: the Voice Notyper PWA the launcher opens. -->
+    <string name="launch_url" translatable="false">https://notes.idarah786.com/?app=android</string>
+    <string name="asset_statements" translatable="false">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": {\"namespace\": \"web\", \"site\": \"https://notes.idarah786.com\"}}]</string>
+</resources>
