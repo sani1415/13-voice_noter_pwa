@@ -222,9 +222,15 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
             private float touchY;
             private boolean dragging;
             private boolean longPressFired;
+            private boolean liveStartedOnDown;
             private final Runnable longPressRunnable = () -> {
                 if (dragging || longPressFired || voice == null) return;
                 longPressFired = true;
+                if (liveStartedOnDown) {
+                    // Long-press is mode switch — cancel the early live start.
+                    voice.stopQuietly();
+                    liveStartedOnDown = false;
+                }
                 if (micWrap != null) {
                     micWrap.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
                 }
@@ -241,8 +247,13 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
                         touchY = event.getRawY();
                         dragging = false;
                         longPressFired = false;
+                        liveStartedOnDown = false;
                         mainHandler.removeCallbacks(longPressRunnable);
                         mainHandler.postDelayed(longPressRunnable, longPressMs);
+                        // Overlap mic/WS startup with the press itself (live mode only).
+                        if (voice != null && voice.isLiveMode() && !voice.isBusy()) {
+                            liveStartedOnDown = voice.startLiveIfIdle();
+                        }
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = event.getRawX() - touchX;
@@ -250,6 +261,10 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
                         if (!dragging && (Math.abs(dx) > touchSlop || Math.abs(dy) > touchSlop)) {
                             dragging = true;
                             mainHandler.removeCallbacks(longPressRunnable);
+                            if (liveStartedOnDown) {
+                                voice.stopQuietly();
+                                liveStartedOnDown = false;
+                            }
                         }
                         if (dragging) {
                             layoutParams.x = startX + Math.round(dx);
@@ -260,11 +275,21 @@ public class FloatingBubbleService extends Service implements VoiceSessionContro
                     case MotionEvent.ACTION_UP:
                         mainHandler.removeCallbacks(longPressRunnable);
                         if (!dragging && !longPressFired) {
-                            voice.toggleVoice();
+                            if (liveStartedOnDown) {
+                                // Already listening from ACTION_DOWN — keep session open.
+                                liveStartedOnDown = false;
+                            } else if (voice != null) {
+                                voice.toggleVoice();
+                            }
                         }
+                        liveStartedOnDown = false;
                         return true;
                     case MotionEvent.ACTION_CANCEL:
                         mainHandler.removeCallbacks(longPressRunnable);
+                        if (liveStartedOnDown && voice != null) {
+                            voice.stopQuietly();
+                        }
+                        liveStartedOnDown = false;
                         return true;
                     default:
                         return false;

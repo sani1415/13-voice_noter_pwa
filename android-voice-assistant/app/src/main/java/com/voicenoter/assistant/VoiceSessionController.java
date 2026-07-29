@@ -51,13 +51,16 @@ final class VoiceSessionController {
 
     private MediaRecorder recorder;
     private File audioFile;
-    private SonioxLiveTranscriber liveTranscriber;
+    private final SonioxLiveTranscriber liveEngine = new SonioxLiveTranscriber();
     private boolean isRecording;
     private boolean isTranscribing;
     private boolean isLiveActive;
     private boolean isLiveConnecting;
+    private boolean isLiveFinalizing;
+    private boolean liveStopDeliver;
     private int voiceSessionGeneration;
     private String liveFinalText = "";
+    private String livePartialText = "";
     private boolean liveInsertedViaA11y;
     private final Runnable sessionLimitRunnable;
 
@@ -76,7 +79,7 @@ final class VoiceSessionController {
     }
 
     boolean isBusy() {
-        return isRecording || isTranscribing || isLiveActive;
+        return isRecording || isTranscribing || isLiveActive || isLiveFinalizing;
     }
 
     boolean isLiveMode() {
@@ -95,11 +98,16 @@ final class VoiceSessionController {
         Toast.makeText(appContext,
             MainActivity.MODE_LIVE.equals(next) ? "Live transcription" : "Record then transcribe",
             Toast.LENGTH_SHORT).show();
-        prefetchSonioxIfNeeded();
+        if (MainActivity.MODE_LIVE.equals(next)) {
+            armLiveEngine();
+        } else {
+            liveEngine.releaseArm();
+        }
     }
 
     void toggleVoice() {
         if (isLiveMode()) {
+            if (isLiveFinalizing) return;
             if (isLiveActive) stopLive(true);
             else startLive();
         } else if (isRecording) {
@@ -109,10 +117,22 @@ final class VoiceSessionController {
         }
     }
 
+    /** Start live on touch-down so WS/mic overlap the finger press. */
+    boolean startLiveIfIdle() {
+        if (!isLiveMode()) return false;
+        if (isLiveFinalizing) {
+            // New tap wins — drop the trailing finalize of the previous utterance.
+            forceStopLive();
+        }
+        if (isBusy()) return false;
+        startLive();
+        return isLiveActive;
+    }
+
     void stopQuietly() {
         voiceSessionGeneration++;
-        if (isLiveActive || liveTranscriber != null) {
-            stopLive(false);
+        if (isLiveActive || isLiveFinalizing) {
+            forceStopLive();
         }
         if (isRecording) {
             cancelRecordingQuietly();
@@ -124,14 +144,20 @@ final class VoiceSessionController {
     void destroy() {
         cancelSessionLimit();
         stopQuietly();
+        liveEngine.releaseArm();
         executor.shutdownNow();
     }
 
     void prefetchSonioxIfNeeded() {
+        armLiveEngine();
+    }
+
+    private void armLiveEngine() {
         if (!isLiveMode()) return;
         String endpoint = getEndpoint();
         if (endpoint.isEmpty()) return;
-        SonioxKeyCache.prefetch(appContext, endpoint, executor);
+        if (!hasMicPermission()) return;
+        liveEngine.arm(appContext, endpoint, currentLanguage());
     }
 
     private void armSessionLimit() {
@@ -287,7 +313,7 @@ final class VoiceSessionController {
     }
 
     private void startLive() {
-        if (isLiveActive || isRecording || isTranscribing) return;
+        if (isLiveActive || isLiveFinalizing || isRecording || isTranscribing) return;
         if (!hasMicPermission()) {
             ui.onStatus("Grant mic in app");
             return;
@@ -300,22 +326,21 @@ final class VoiceSessionController {
 
         isLiveActive = true;
         isLiveConnecting = true;
+        isLiveFinalizing = false;
+        liveStopDeliver = false;
         liveFinalText = "";
+        livePartialText = "";
         liveInsertedViaA11y = false;
         final int session = ++voiceSessionGeneration;
-        ui.onLiveConnecting();
+        // Show listening immediately — mic starts in start(); WS catches up.
+        ui.onLiveListening();
         armSessionLimit();
         TextInsertAccessibilityService.beginLive();
 
-        liveTranscriber = new SonioxLiveTranscriber();
-        liveTranscriber.start(appContext, endpoint, currentLanguage(), new SonioxLiveTranscriber.Listener() {
+        liveEngine.start(appContext, endpoint, currentLanguage(), new SonioxLiveTranscriber.Listener() {
             @Override
             public void onConnecting() {
-                mainHandler.post(() -> {
-                    if (session != voiceSessionGeneration || !isLiveActive) return;
-                    isLiveConnecting = true;
-                    ui.onLiveConnecting();
-                });
+                // Mic-first path already shows listening; keep UI snappy.
             }
 
             @Override
@@ -330,14 +355,14 @@ final class VoiceSessionController {
             @Override
             public void onTranscriptUpdate(String finalText, String partialText) {
                 mainHandler.post(() -> {
-                    if (session != voiceSessionGeneration || !isLiveActive) return;
-                    if (isLiveConnecting) {
-                        isLiveConnecting = false;
-                        ui.onLiveListening();
+                    // Keep writing during finalize so trailing words are not lost.
+                    if (session != voiceSessionGeneration || (!isLiveActive && !isLiveFinalizing)) {
+                        return;
                     }
+                    isLiveConnecting = false;
                     liveFinalText = VoicePunctuation.apply(finalText != null ? finalText : "");
-                    String partial = partialText != null ? partialText : "";
-                    if (TextInsertAccessibilityService.updateLive(liveFinalText, partial)) {
+                    livePartialText = partialText != null ? partialText : "";
+                    if (TextInsertAccessibilityService.updateLive(liveFinalText, livePartialText)) {
                         liveInsertedViaA11y = true;
                     }
                 });
@@ -347,14 +372,22 @@ final class VoiceSessionController {
             public void onError(String message) {
                 if (session != voiceSessionGeneration) return;
                 mainHandler.post(() -> {
+                    if (!isLiveActive && !isLiveFinalizing) {
+                        armLiveEngine();
+                        return;
+                    }
                     isLiveConnecting = false;
                     isLiveActive = false;
-                    liveTranscriber = null;
+                    isLiveFinalizing = false;
+                    liveStopDeliver = false;
+                    liveFinalText = "";
+                    livePartialText = "";
+                    liveInsertedViaA11y = false;
                     cancelSessionLimit();
                     TextInsertAccessibilityService.endLive();
-                    liveInsertedViaA11y = false;
                     ui.onStatus(message != null && !message.isEmpty() ? message : "Live error");
                     ui.onIdle(isLiveMode());
+                    armLiveEngine();
                 });
             }
 
@@ -362,39 +395,66 @@ final class VoiceSessionController {
             public void onStopped() {
                 mainHandler.post(() -> {
                     if (session != voiceSessionGeneration) return;
-                    isLiveConnecting = false;
-                    isLiveActive = false;
-                    liveTranscriber = null;
-                    cancelSessionLimit();
-                    TextInsertAccessibilityService.endLive();
-                    ui.onIdle(isLiveMode());
+                    completeLiveFinalize();
                 });
             }
         });
+        isLiveConnecting = false;
     }
 
     private void stopLive(boolean deliver) {
+        if (!isLiveActive || isLiveFinalizing) return;
         cancelSessionLimit();
         isLiveActive = false;
         isLiveConnecting = false;
-        SonioxLiveTranscriber active = liveTranscriber;
-        liveTranscriber = null;
-        String text = liveFinalText;
-        liveFinalText = "";
+        isLiveFinalizing = true;
+        liveStopDeliver = deliver;
+        // Mic UI returns immediately; a11y stays open for trailing tokens.
+        ui.onIdle(isLiveMode());
+        liveEngine.stop();
+    }
+
+    private void completeLiveFinalize() {
+        if (!isLiveFinalizing && !isLiveActive) {
+            armLiveEngine();
+            return;
+        }
+        boolean deliver = liveStopDeliver;
         boolean alreadyInserted = liveInsertedViaA11y;
+        String text = (liveFinalText + livePartialText).trim();
+        isLiveActive = false;
+        isLiveConnecting = false;
+        isLiveFinalizing = false;
+        liveStopDeliver = false;
+        liveFinalText = "";
+        livePartialText = "";
         liveInsertedViaA11y = false;
         TextInsertAccessibilityService.endLive();
-        if (active != null) active.stop();
-        if (deliver && text != null && !text.trim().isEmpty()) {
+
+        if (deliver && !text.isEmpty()) {
             if (alreadyInserted) {
-                // Live text already written into the focused field.
-                clipboardBackup(text.trim());
+                clipboardBackup(text);
                 ui.onStatus("Inserted");
             } else {
-                deliverResult(text.trim());
+                deliverResult(text);
             }
         }
         ui.onIdle(isLiveMode());
+        armLiveEngine();
+    }
+
+    private void forceStopLive() {
+        cancelSessionLimit();
+        isLiveConnecting = false;
+        isLiveActive = false;
+        isLiveFinalizing = false;
+        liveStopDeliver = false;
+        liveFinalText = "";
+        livePartialText = "";
+        liveInsertedViaA11y = false;
+        TextInsertAccessibilityService.endLive();
+        liveEngine.cancel();
+        armLiveEngine();
     }
 
     /** Prefer Accessibility insert into focused field; clipboard is always kept as backup. */
