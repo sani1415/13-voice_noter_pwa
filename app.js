@@ -1139,8 +1139,9 @@ function stopEditorPeriodicSave() {
 }
 
 function saveCurrentNote(silent = false) {
-  const content = noteTextarea.value.trim();
-  if (!content) return;
+  const rawContent = noteTextarea.value;
+  const content = rawContent.trim();
+  if (!content && !currentNoteId) return;
 
   const now = new Date().toISOString();
   if (!currentNoteId) {
@@ -1163,7 +1164,7 @@ function saveCurrentNote(silent = false) {
 
   notes[currentNoteId] = {
     ...prev,
-    content: noteTextarea.value,
+    content: rawContent,
     title:   useCustomTitle ? ((prev.title && prev.title.trim()) || 'নতুন নোট') : derivedTitle,
     updated: now,
   };
@@ -2612,6 +2613,80 @@ function focusNoteEditorWithInsertedRange(insertStart, insertEnd) {
   applyScroll();
   requestAnimationFrame(applyScroll);
   requestAnimationFrame(() => requestAnimationFrame(applyScroll));
+  keepEditorCaretVisible({ immediate: true });
+}
+
+let _caretMirror = null;
+let _caretVisibleTimer = null;
+
+function getTextareaCaretTop(ta) {
+  if (!_caretMirror) {
+    _caretMirror = document.createElement('div');
+    _caretMirror.setAttribute('aria-hidden', 'true');
+    _caretMirror.style.cssText = [
+      'position:absolute',
+      'top:-9999px',
+      'left:0',
+      'visibility:hidden',
+      'white-space:pre-wrap',
+      'overflow-wrap:break-word',
+      'word-break:break-word',
+      'box-sizing:border-box',
+    ].join(';');
+    document.body.appendChild(_caretMirror);
+  }
+
+  const cs = getComputedStyle(ta);
+  const mirror = _caretMirror;
+  const props = [
+    'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing',
+    'lineHeight', 'textTransform', 'textIndent', 'paddingTop', 'paddingRight',
+    'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth',
+    'borderBottomWidth', 'borderLeftWidth',
+  ];
+  for (const prop of props) mirror.style[prop] = cs[prop];
+  mirror.style.width = `${ta.clientWidth}px`;
+
+  const caret = Math.max(0, Math.min(ta.selectionEnd || 0, ta.value.length));
+  mirror.textContent = ta.value.slice(0, caret);
+  const marker = document.createElement('span');
+  marker.textContent = '\u200b';
+  mirror.appendChild(marker);
+
+  return marker.offsetTop;
+}
+
+function keepEditorCaretVisible({ immediate = false } = {}) {
+  if (!noteTextarea || document.activeElement !== noteTextarea) return;
+  if (!screenEditor?.classList.contains('active')) return;
+
+  clearTimeout(_caretVisibleTimer);
+  const run = () => {
+    const ta = noteTextarea;
+    if (!ta || document.activeElement !== ta) return;
+
+    const cs = getComputedStyle(ta);
+    const lineHeight = Math.max(18, parseFloat(cs.lineHeight) || 24);
+    const caretTop = getTextareaCaretTop(ta);
+    const visibleTop = ta.scrollTop;
+    const visibleBottom = ta.scrollTop + ta.clientHeight;
+    const bottomBarHeight = bottomBar ? bottomBar.getBoundingClientRect().height : 0;
+    const bottomPadding = Math.max(lineHeight * 2.2, bottomBarHeight + 18);
+    const targetBottom = caretTop + lineHeight;
+
+    if (targetBottom > visibleBottom - bottomPadding) {
+      ta.scrollTop = Math.min(
+        ta.scrollHeight - ta.clientHeight,
+        targetBottom - ta.clientHeight + bottomPadding,
+      );
+    } else if (caretTop < visibleTop + lineHeight) {
+      ta.scrollTop = Math.max(0, caretTop - lineHeight);
+    }
+  };
+
+  if (immediate) run();
+  else _caretVisibleTimer = setTimeout(run, 0);
+  requestAnimationFrame(run);
 }
 
 /* ══════════════════════════════════════════════════
@@ -3180,9 +3255,15 @@ on(cancelReplaceBtn, 'click', () => { clearSelection(); audioChunks=[]; segmentC
 on(noteTextarea, 'input', () => {
   if (noteTitleDisplay) noteTitleDisplay.textContent = getEditorDisplayTitle();
   updateNoteWordCount();
+  keepEditorCaretVisible();
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => saveCurrentNote(true), appPrefs.autoSaveDelay || 2000);
 });
+
+on(noteTextarea, 'focus', () => keepEditorCaretVisible());
+on(noteTextarea, 'click', () => keepEditorCaretVisible());
+on(noteTextarea, 'keyup', () => keepEditorCaretVisible());
+on(noteTextarea, 'select', () => keepEditorCaretVisible());
 
 document.addEventListener('visibilitychange', () => { if (document.hidden && currentNoteId) saveCurrentNote(true); });
 
@@ -3195,6 +3276,7 @@ function syncVisualViewportHeight() {
 
   const keyboardInset = vv ? Math.max(0, window.innerHeight - vv.height - top) : 0;
   document.documentElement.classList.toggle('keyboard-open', keyboardInset > 120);
+  keepEditorCaretVisible();
 }
 
 syncVisualViewportHeight();
