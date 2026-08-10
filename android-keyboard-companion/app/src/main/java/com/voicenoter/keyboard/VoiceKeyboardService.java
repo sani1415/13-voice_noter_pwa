@@ -152,6 +152,11 @@ public class VoiceKeyboardService extends InputMethodService {
     private EditText presetComposeInput;
     private LinearLayout letterContainer;
     private LinearLayout suggestionBar;
+    private final TextView[] suggestionViews = new TextView[3];
+    // Best suggestion goes to the centre slot, second-best left, third right.
+    private static final int[] SUGGESTION_SLOT_ORDER = {1, 0, 2};
+    private volatile BanglaDictionary bnDictionary;
+    private boolean bnDictionaryLoadStarted = false;
     private Button shiftKeyView;
     private Button enterKeyButton;
     private Button rightPunctButton;
@@ -190,6 +195,7 @@ public class VoiceKeyboardService extends InputMethodService {
     public View onCreateInputView() {
         loadPreferences();
         prefetchSonioxKeyIfNeeded();
+        loadBnDictionaryIfNeeded();
         return buildInputView();
     }
 
@@ -208,6 +214,8 @@ public class VoiceKeyboardService extends InputMethodService {
         refreshEnterKeyLabel();
         updateMicButtonAppearance();
         prefetchSonioxKeyIfNeeded();
+        loadBnDictionaryIfNeeded();
+        refreshSuggestions();
     }
 
     private void reloadVoiceInputModeFromPrefs() {
@@ -457,6 +465,7 @@ public class VoiceKeyboardService extends InputMethodService {
         suggestionBar.setGravity(Gravity.CENTER_VERTICAL);
         suggestionBar.setPadding(dp(2), dp(2), dp(2), dp(2));
         suggestionBar.setVisibility(View.GONE);
+        buildSuggestionViews();
         panel.addView(suggestionBar, matchWidthWrap());
 
         letterContainer = new LinearLayout(this);
@@ -779,6 +788,102 @@ public class VoiceKeyboardService extends InputMethodService {
         // No-op: phonetic composing removed.
     }
 
+    // ---------- Word suggestions ----------
+
+    private void loadBnDictionaryIfNeeded() {
+        if (bnDictionary != null || bnDictionaryLoadStarted) return;
+        bnDictionaryLoadStarted = true;
+        executor.execute(() -> {
+            try {
+                BanglaDictionary dict = BanglaDictionary.load(this);
+                mainHandler.post(() -> {
+                    bnDictionary = dict;
+                    refreshSuggestions();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> bnDictionaryLoadStarted = false);
+            }
+        });
+    }
+
+    private void buildSuggestionViews() {
+        suggestionBar.removeAllViews();
+        for (int i = 0; i < suggestionViews.length; i++) {
+            if (i > 0) {
+                View divider = new View(this);
+                divider.setBackgroundColor(themeKeyStroke);
+                suggestionBar.addView(divider, new LinearLayout.LayoutParams(dp(1), dp(18)));
+            }
+            TextView tv = new TextView(this);
+            tv.setTextSize(15);
+            tv.setTextColor(themeKeyText);
+            if (i == 1) tv.setTypeface(null, Typeface.BOLD);
+            tv.setGravity(Gravity.CENTER);
+            tv.setSingleLine(true);
+            tv.setEllipsize(TextUtils.TruncateAt.END);
+            tv.setPadding(dp(4), 0, dp(4), 0);
+            tv.setOnClickListener(v -> {
+                CharSequence word = ((TextView) v).getText();
+                if (word.length() > 0) {
+                    performKeyHaptic(v);
+                    applySuggestion(word.toString());
+                }
+            });
+            suggestionBar.addView(tv, new LinearLayout.LayoutParams(0, dp(34), 1f));
+            suggestionViews[i] = tv;
+        }
+    }
+
+    private void refreshSuggestions() {
+        if (suggestionBar == null) return;
+        BanglaDictionary dict = bnDictionary;
+        boolean available = dict != null && MainActivity.LANG_BN.equals(layoutLang)
+            && !presetComposeActive;
+        suggestionBar.setVisibility(available ? View.VISIBLE : View.GONE);
+        if (!available) return;
+        java.util.List<String> words = dict.suggest(currentBnPartialWord(), suggestionViews.length);
+        for (int i = 0; i < suggestionViews.length; i++) {
+            suggestionViews[SUGGESTION_SLOT_ORDER[i]].setText(i < words.size() ? words.get(i) : "");
+        }
+    }
+
+    /** Bengali word fragment immediately before the cursor, or "" when mid-word/selection. */
+    private String currentBnPartialWord() {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return "";
+        CharSequence selected = ic.getSelectedText(0);
+        if (selected != null && selected.length() > 0) return "";
+        CharSequence after = ic.getTextAfterCursor(1, 0);
+        if (after != null && after.length() > 0 && isBnWordChar(after.charAt(0))) return "";
+        CharSequence before = ic.getTextBeforeCursor(32, 0);
+        if (before == null) return "";
+        int i = before.length();
+        while (i > 0 && isBnWordChar(before.charAt(i - 1))) i--;
+        return before.subSequence(i, before.length()).toString();
+    }
+
+    private boolean isBnWordChar(char c) {
+        if (c >= '\u09E6' && c <= '\u09EF') return false; // Bengali digits end a word
+        return (c >= '\u0980' && c <= '\u09FF') || c == '\u200C' || c == '\u200D';
+    }
+
+    private void applySuggestion(String word) {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic == null) return;
+        String partial = currentBnPartialWord();
+        if (partial.isEmpty()) return;
+        ic.deleteSurroundingText(partial.length(), 0);
+        commitText(word + " ");
+    }
+
+    @Override
+    public void onUpdateSelection(int oldSelStart, int oldSelEnd, int newSelStart, int newSelEnd,
+                                  int candidatesStart, int candidatesEnd) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
+            candidatesStart, candidatesEnd);
+        refreshSuggestions();
+    }
+
     // ---------- Shift / caps lock ----------
 
     private boolean shiftActive() {
@@ -1001,6 +1106,7 @@ public class VoiceKeyboardService extends InputMethodService {
         presetComposeActive = true;
         presetComposeInput.setText("");
         presetComposeInput.requestFocus();
+        refreshSuggestions();
     }
 
     private void hidePresetCompose() {
@@ -1011,6 +1117,7 @@ public class VoiceKeyboardService extends InputMethodService {
         if (presetComposeInput != null) {
             presetComposeInput.setText("");
         }
+        refreshSuggestions();
     }
 
     private void savePresetCompose() {
@@ -1447,6 +1554,7 @@ public class VoiceKeyboardService extends InputMethodService {
         resetBnKarState();
         rebuildLetterRows();
         savePreferences();
+        refreshSuggestions();
     }
 
     private void toggleKeyboardPanel() {
@@ -1967,6 +2075,7 @@ public class VoiceKeyboardService extends InputMethodService {
         }
         InputConnection inputConnection = getCurrentInputConnection();
         if (inputConnection != null) inputConnection.commitText(text, 1);
+        refreshSuggestions();
     }
 
     private void deleteBackward() {
@@ -2038,12 +2147,14 @@ public class VoiceKeyboardService extends InputMethodService {
         performKeyHaptic(source);
         deleteBackward();
         lastKeyWasSpace = false;
+        refreshSuggestions();
     }
 
     private void performWordDelete(View source) {
         performKeyHaptic(source);
         deleteWordBackward();
         lastKeyWasSpace = false;
+        refreshSuggestions();
     }
 
     private void selectAllText() {
