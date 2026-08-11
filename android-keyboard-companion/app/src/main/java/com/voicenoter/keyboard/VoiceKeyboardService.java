@@ -22,6 +22,7 @@ import android.view.Gravity;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.widget.PopupWindow;
 import android.view.inputmethod.EditorInfo;
@@ -87,10 +88,11 @@ public class VoiceKeyboardService extends InputMethodService {
         "\u09C7", "\u09C8", "\u09CB", "\u09CC"
     };
 
-    // Long-press alternate characters for the roman QWERTY rows (EN + phonetic BN)
-    // and a few native Bangla letters that have an easy related form.
+    // Long-press alternate characters for the roman QWERTY rows (EN + phonetic BN),
+    // native Bangla letters, and Arabic letters with related forms.
     private static final java.util.Map<String, String[]> EN_LONG_PRESS = new java.util.HashMap<>();
     private static final java.util.Map<String, String[]> BN_LONG_PRESS = new java.util.HashMap<>();
+    private static final java.util.Map<String, String[]> AR_LONG_PRESS = new java.util.HashMap<>();
     static {
         EN_LONG_PRESS.put("a", new String[]{"\u00E1", "\u00E0", "\u00E2", "\u00E4", "\u00E5", "\u00E3"});
         EN_LONG_PRESS.put("e", new String[]{"\u00E9", "\u00E8", "\u00EA", "\u00EB"});
@@ -103,6 +105,12 @@ public class VoiceKeyboardService extends InputMethodService {
         EN_LONG_PRESS.put("y", new String[]{"\u00FD"});
         EN_LONG_PRESS.put("'", new String[]{"\u2018", "\u2019", "\u201C", "\u201D", "`"});
         BN_LONG_PRESS.put("\u09A4", new String[]{"\u09CE"});
+        // Hold ا / و / ي for hamza and alef variants (instead of burying them on more).
+        AR_LONG_PRESS.put("\u0627", new String[]{"\u0623", "\u0625", "\u0622", "\u0621", "\u0671"});
+        AR_LONG_PRESS.put("\u0648", new String[]{"\u0624"});
+        AR_LONG_PRESS.put("\u064A", new String[]{"\u0626", "\u0649"});
+        AR_LONG_PRESS.put("\u0647", new String[]{"\u0629"});
+        AR_LONG_PRESS.put("\u0644", new String[]{"\u0644\u0627", "\u0644\u0623", "\u0644\u0625", "\u0644\u0622"});
     }
 
     // Theme colours, resolved from the selected preset in loadPreferences().
@@ -176,7 +184,29 @@ public class VoiceKeyboardService extends InputMethodService {
     private int liveStartOffset = 0;
     private String liveLastText = "";
     private String liveAnchorFinalBase = "";
+    /**
+     * After a user edit during live, STT text at edit-time is frozen. Only the delta
+     * beyond this freeze is shown live (so deleted words are not restored, but new
+     * speech still streams immediately).
+     */
+    private String liveFrozenFinal = null;
+    private String liveFrozenPartial = "";
+    /** Last final/partial received from STT — the freeze point for manual edits. */
+    private String liveLastFinalSeen = "";
+    private String liveLastPartialSeen = "";
+    /** User moved caret / selected text elsewhere while live — insert next speech there. */
+    private boolean livePendingRelocate = false;
+    private int liveRelocateSelStart = 0;
+    private int liveRelocateSelEnd = 0;
+    private boolean liveIgnoreSelectionCallback = false;
+    /**
+     * Caret positions our own composing updates put the cursor at. Editor callbacks
+     * report these late, so matching ones must not be mistaken for user caret moves.
+     */
+    private final java.util.ArrayDeque<Integer> liveExpectedCarets = new java.util.ArrayDeque<>();
     private boolean voiceOnlyMode = false;
+    private View stripAllKey;
+    private View voiceStrip;
     private String layoutLang = MainActivity.LANG_BN;
     private String voiceInputMode = MainActivity.MODE_RECORD;
     private String bnKarBase = null;
@@ -312,15 +342,20 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private LinearLayout buildVoiceStrip() {
         LinearLayout strip = new LinearLayout(this);
+        voiceStrip = strip;
         strip.setOrientation(LinearLayout.HORIZONTAL);
         strip.setGravity(Gravity.CENTER_VERTICAL);
         strip.setPadding(dp(4), dp(4), dp(4), dp(4));
+        // Prevent the mic from painting past the screen when the strip is tight.
+        strip.setClipChildren(true);
+        strip.setClipToPadding(true);
 
         // Fixed-width icons so BN (with ABC/kar) matches EN/AR sizes.
-        strip.addView(compactActionKey("All", () -> {
+        stripAllKey = compactActionKey("All", () -> {
             finalizePendingComposing();
             selectAllText();
-        }), stripFixedLp(dp(44)));
+        });
+        strip.addView(stripAllKey, stripFixedLp(dp(44)));
 
         ImageButton stripUndoButton = stripIconButton(R.drawable.ic_undo);
         stripUndoButton.setOnClickListener(v -> {
@@ -735,6 +770,10 @@ public class VoiceKeyboardService extends InputMethodService {
 
     private void updateKarToggleVisibility() {
         if (karToggleKey == null) return;
+        if (voiceOnlyMode) {
+            karToggleKey.setVisibility(View.GONE);
+            return;
+        }
         karToggleKey.setVisibility(bnDynamicRow1Enabled() ? View.VISIBLE : View.GONE);
         updateKarToggleHighlight();
     }
@@ -870,6 +909,10 @@ public class VoiceKeyboardService extends InputMethodService {
     private void applySuggestion(String word) {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
+        // Deleting into an active composing span corrupts the live text.
+        if (isLiveActive && !liveLastText.isEmpty()) {
+            finishLiveComposingAtCaret(ic);
+        }
         String partial = currentBnPartialWord();
         if (partial.isEmpty()) return;
         ic.deleteSurroundingText(partial.length(), 0);
@@ -882,6 +925,48 @@ public class VoiceKeyboardService extends InputMethodService {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd,
             candidatesStart, candidatesEnd);
         refreshSuggestions();
+        trackLiveSelectionChange(newSelStart, newSelEnd);
+    }
+
+    /**
+     * Detect when the user taps or selects text while live. The dictated span is
+     * sealed immediately (so later updates stop yanking the caret back to it) and
+     * the next speech is inserted at the new caret, replacing any selection.
+     */
+    private void trackLiveSelectionChange(int newSelStart, int newSelEnd) {
+        if (!isLiveActive || liveIgnoreSelectionCallback) return;
+        if (newSelStart < 0 || newSelEnd < 0) return;
+
+        int start = Math.min(newSelStart, newSelEnd);
+        int end = Math.max(newSelStart, newSelEnd);
+
+        if (start == end) {
+            // Callbacks from our own composing updates land on a recent span end.
+            if (isRecentExpectedCaret(start)) return;
+            // Empty live segment: caret staying on the anchor is normal.
+            if (liveLastText.isEmpty() && start == liveStartOffset) return;
+        }
+
+        sealLiveSpan(getCurrentInputConnection());
+        freezeLiveAtCurrent();
+        livePendingRelocate = true;
+        liveRelocateSelStart = start;
+        liveRelocateSelEnd = end;
+    }
+
+    /** Freeze STT output at the last received text — only newer speech gets inserted. */
+    private void freezeLiveAtCurrent() {
+        liveFrozenFinal = liveLastFinalSeen;
+        liveFrozenPartial = liveLastPartialSeen;
+    }
+
+    private void rememberExpectedCaret(int pos) {
+        liveExpectedCarets.addLast(pos);
+        while (liveExpectedCarets.size() > 4) liveExpectedCarets.pollFirst();
+    }
+
+    private boolean isRecentExpectedCaret(int pos) {
+        return liveExpectedCarets.contains(pos);
     }
 
     // ---------- Shift / caps lock ----------
@@ -982,10 +1067,11 @@ public class VoiceKeyboardService extends InputMethodService {
             };
         }
         if (MainActivity.LANG_AR.equals(lang)) {
+            // د ز ظ on the main page; ء/أ/إ/… come from long-press on ا و ي ه ل.
             return new String[][]{
                 {"\u0636", "\u0635", "\u062B", "\u0642", "\u0641", "\u063A", "\u0639", "\u0647", "\u062E", "\u062D"},
                 {"\u062C", "\u0634", "\u0633", "\u064A", "\u0628", "\u0644", "\u0627", "\u062A", "\u0646", "\u0645"},
-                {"\u0643", "\u0637", "\u0630", "\u0621", "\u0624", "\u0631", "\u0649", "\u0629", "\u0648", TOK_DELETE},
+                {"\u0643", "\u0637", "\u0638", "\u0630", "\u062F", "\u0632", "\u0631", "\u0649", "\u0629", "\u0648", TOK_DELETE},
             };
         }
         return new String[][]{
@@ -1572,6 +1658,14 @@ public class VoiceKeyboardService extends InputMethodService {
         if (stripDeleteKey != null) {
             stripDeleteKey.setVisibility(voiceOnlyMode ? View.VISIBLE : View.GONE);
         }
+        // Kar row is useless without the letter keyboard — free strip width for the mic.
+        if (karToggleKey != null) {
+            if (voiceOnlyMode) {
+                karToggleKey.setVisibility(View.GONE);
+            } else {
+                updateKarToggleVisibility();
+            }
+        }
         if (voiceOnlyMode) {
             dismissSymbolPopup();
             dismissPresetPopup();
@@ -1583,18 +1677,70 @@ public class VoiceKeyboardService extends InputMethodService {
         applyMicStripWidth();
     }
 
-    /** Mic ~2 letter-key widths; keep timer readable without crowding BN strip icons. */
+    /**
+     * Mic prefers {@link #STRIP_MIC_W}, but when the strip is crowded (voice-only + delete)
+     * shrink it so the button stays fully on-screen instead of overflowing past the right edge.
+     */
     private void applyMicStripWidth() {
         if (stripMicKeyWrap == null) return;
+        final View strip = voiceStrip != null ? voiceStrip : (View) stripMicKeyWrap.getParent();
+        if (strip == null) return;
+        Runnable fit = () -> fitMicStripWidth(strip);
+        if (strip.getWidth() > 0) {
+            fit.run();
+        } else {
+            strip.post(fit);
+        }
+    }
+
+    private void fitMicStripWidth(View strip) {
         android.view.ViewGroup.LayoutParams raw = stripMicKeyWrap.getLayoutParams();
         if (!(raw instanceof LinearLayout.LayoutParams)) return;
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) raw;
+
+        if (stripAllKey != null && !voiceOnlyMode) {
+            stripAllKey.setVisibility(View.VISIBLE);
+        }
+
         int target = dp(STRIP_MIC_W);
+        if (strip instanceof ViewGroup && strip.getWidth() > 0) {
+            ViewGroup group = (ViewGroup) strip;
+            if (voiceOnlyMode && stripAllKey != null) {
+                stripAllKey.setVisibility(View.VISIBLE);
+            }
+            int available = measureStripSpaceForMic(group, lp);
+            if (voiceOnlyMode && stripAllKey != null && available < dp(STRIP_MIC_W)) {
+                // Prefer a full-size mic over the All shortcut when space is tight.
+                stripAllKey.setVisibility(View.GONE);
+                available = measureStripSpaceForMic(group, lp);
+            }
+            if (available > 0) {
+                target = Math.min(dp(STRIP_MIC_W), Math.max(dp(52), available));
+            }
+        }
+
         if (lp.width == target && lp.weight == 0f) return;
         lp.width = target;
         lp.height = dp(STRIP_HEIGHT);
         lp.weight = 0f;
         stripMicKeyWrap.setLayoutParams(lp);
+    }
+
+    private int measureStripSpaceForMic(ViewGroup group, LinearLayout.LayoutParams micLp) {
+        int inner = group.getWidth() - group.getPaddingLeft() - group.getPaddingRight();
+        int used = 0;
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View child = group.getChildAt(i);
+            if (child == stripMicKeyWrap || child.getVisibility() == View.GONE) continue;
+            android.view.ViewGroup.LayoutParams cr = child.getLayoutParams();
+            if (!(cr instanceof LinearLayout.LayoutParams)) continue;
+            LinearLayout.LayoutParams clp = (LinearLayout.LayoutParams) cr;
+            if (clp.weight > 0f) continue;
+            int w = child.getWidth();
+            if (w <= 0) w = clp.width > 0 ? clp.width : 0;
+            used += w + clp.leftMargin + clp.rightMargin;
+        }
+        return inner - used - micLp.leftMargin - micLp.rightMargin;
     }
 
     private void updateExpandButtonIcon() {
@@ -1815,15 +1961,38 @@ public class VoiceKeyboardService extends InputMethodService {
     }
 
     private void beginLiveAnchor() {
+        liveLastText = "";
+        liveAnchorFinalBase = "";
+        liveFrozenFinal = null;
+        liveFrozenPartial = "";
+        liveLastFinalSeen = "";
+        liveLastPartialSeen = "";
+        livePendingRelocate = false;
+        liveExpectedCarets.clear();
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) {
             liveStartOffset = 0;
-        } else {
-            CharSequence before = ic.getTextBeforeCursor(100000, 0);
-            liveStartOffset = before != null ? before.length() : 0;
+            return;
         }
-        liveLastText = "";
-        liveAnchorFinalBase = "";
+        ExtractedTextRequest req = new ExtractedTextRequest();
+        req.hintMaxChars = 100000;
+        ExtractedText et = ic.getExtractedText(req, 0);
+        if (et != null && et.text != null && et.selectionStart >= 0) {
+            int selA = et.startOffset + Math.min(et.selectionStart, et.selectionEnd);
+            int selB = et.startOffset + Math.max(et.selectionStart, et.selectionEnd);
+            liveStartOffset = selA;
+            if (selB > selA) {
+                // Dictation replaces the selection — but only once speech actually
+                // arrives, so a failed session doesn't destroy the selected text.
+                livePendingRelocate = true;
+                liveRelocateSelStart = selA;
+                liveRelocateSelEnd = selB;
+                liveFrozenFinal = "";
+                liveFrozenPartial = "";
+            }
+        } else {
+            liveStartOffset = getReliableCursorOffset(ic);
+        }
     }
 
     private int getCursorOffset(InputConnection ic) {
@@ -1831,49 +2000,171 @@ public class VoiceKeyboardService extends InputMethodService {
         return before != null ? before.length() : 0;
     }
 
-    private boolean hasLiveCursorMoved(InputConnection ic) {
-        int cursor = getCursorOffset(ic);
-        if (liveLastText.isEmpty()) {
-            return cursor != liveStartOffset;
+    /**
+     * Cursor offset that works during composing. {@link InputConnection#getTextBeforeCursor}
+     * often excludes the composing region, so it reports the span start while the caret
+     * looks like it is at the end — which makes delete jump backward.
+     */
+    private int getReliableCursorOffset(InputConnection ic) {
+        ExtractedTextRequest req = new ExtractedTextRequest();
+        req.hintMaxChars = 100000;
+        ExtractedText et = ic.getExtractedText(req, 0);
+        if (et != null && et.text != null && et.selectionStart >= 0) {
+            return et.startOffset + et.selectionStart;
         }
-        return cursor < liveStartOffset || cursor > liveStartOffset + liveLastText.length();
+        if (!liveLastText.isEmpty()) {
+            // Visual caret is almost always at the end of the live composing span.
+            return liveStartOffset + liveLastText.length();
+        }
+        return getCursorOffset(ic);
     }
 
-    private void commitLiveAnchor(InputConnection ic, String finalText) {
-        int userCursor = getCursorOffset(ic);
-        int anchorStart = liveStartOffset;
-        int oldLiveLen = liveLastText.length();
+    /** True when the user deleted/changed text inside the live composing span. */
+    private boolean hasLiveSegmentBeenEdited(InputConnection ic) {
+        if (liveLastText == null || liveLastText.isEmpty()) return false;
+        ExtractedTextRequest req = new ExtractedTextRequest();
+        req.hintMaxChars = 100000;
+        ExtractedText et = ic.getExtractedText(req, 0);
+        if (et == null || et.text == null) return false;
+        String text = et.text.toString();
+        int start = liveStartOffset;
+        if (start < 0 || start > text.length()) return true;
+        if (start + liveLastText.length() > text.length()) return true;
+        return !text.substring(start, start + liveLastText.length()).equals(liveLastText);
+    }
 
+    /**
+     * Commit the current live composing text without moving the caret to the span
+     * start. An active selection is kept as-is so it can still be replaced.
+     */
+    private void finishLiveComposingAtCaret(InputConnection ic) {
+        if (ic == null) return;
+        int selStart;
+        int selEnd;
+        ExtractedTextRequest req = new ExtractedTextRequest();
+        req.hintMaxChars = 100000;
+        ExtractedText et = ic.getExtractedText(req, 0);
+        if (et != null && et.text != null && et.selectionStart >= 0) {
+            selStart = et.startOffset + Math.min(et.selectionStart, et.selectionEnd);
+            selEnd = et.startOffset + Math.max(et.selectionStart, et.selectionEnd);
+        } else {
+            selStart = liveStartOffset + liveLastText.length();
+            selEnd = selStart;
+        }
+        liveIgnoreSelectionCallback = true;
         ic.beginBatchEdit();
-        if (!liveLastText.isEmpty()) {
-            ic.setSelection(anchorStart, anchorStart + oldLiveLen);
+        try {
             ic.finishComposingText();
+        } catch (Exception ignored) {
+        }
+        try {
+            ic.setSelection(selStart, selEnd);
+        } catch (Exception ignored) {
         }
         ic.endBatchEdit();
-
-        int newAnchor = userCursor;
-        if (oldLiveLen > 0 && userCursor >= anchorStart && userCursor <= anchorStart + oldLiveLen) {
-            newAnchor = anchorStart + oldLiveLen;
-        }
-        ic.setSelection(newAnchor, newAnchor);
-
-        liveAnchorFinalBase = finalText != null ? finalText : "";
-        liveStartOffset = newAnchor;
         liveLastText = "";
+        liveStartOffset = selStart;
+        mainHandler.post(() -> liveIgnoreSelectionCallback = false);
+        rememberExpectedCaret(selStart);
+    }
+
+    /** Commit the live composing span in place without touching the user's caret. */
+    private void sealLiveSpan(InputConnection ic) {
+        liveLastText = "";
+        if (ic == null) return;
+        liveIgnoreSelectionCallback = true;
+        ic.beginBatchEdit();
+        try {
+            ic.finishComposingText();
+        } catch (Exception ignored) {
+        }
+        ic.endBatchEdit();
+        mainHandler.post(() -> liveIgnoreSelectionCallback = false);
+    }
+
+    /**
+     * First speech after the user moved the caret or made a selection: replace the
+     * selection (or insert at the caret) and continue composing there. Waits until
+     * there is actually new speech so the selection isn't destroyed prematurely.
+     */
+    private void applyPendingRelocate(InputConnection ic, String safeFinal, String safePartial) {
+        if (liveFrozenFinal == null) {
+            liveFrozenFinal = "";
+            liveFrozenPartial = "";
+        }
+        String delta = computePostEditDelta(safeFinal, safePartial);
+        if (delta == null || delta.isEmpty()) return; // nothing new spoken yet
+
+        int selStart = Math.min(liveRelocateSelStart, liveRelocateSelEnd);
+        int selEnd = Math.max(liveRelocateSelStart, liveRelocateSelEnd);
+        livePendingRelocate = false;
+
+        liveIgnoreSelectionCallback = true;
+        ic.beginBatchEdit();
+        try {
+            ic.setSelection(selStart, selEnd);
+            ic.setComposingText(delta, 1);
+            liveStartOffset = selStart;
+            liveLastText = delta;
+        } catch (Exception ignored) {
+            liveStartOffset = getReliableCursorOffset(ic);
+            liveLastText = "";
+        }
+        ic.endBatchEdit();
+        mainHandler.post(() -> liveIgnoreSelectionCallback = false);
+        rememberExpectedCaret(liveStartOffset + liveLastText.length());
+    }
+
+    /** A manual edit landed at the caret — future speech continues from there. */
+    private void reanchorLiveAtCaretNow(InputConnection ic) {
+        if (!isLiveActive || ic == null) return;
+        freezeLiveAtCurrent();
+        liveStartOffset = getReliableCursorOffset(ic);
+        liveLastText = "";
+        livePendingRelocate = false;
+        rememberExpectedCaret(liveStartOffset);
+    }
+
+    private void reanchorAfterUserEdit(InputConnection ic, String finalText, String partialText) {
+        finishLiveComposingAtCaret(ic);
+        liveStartOffset = getReliableCursorOffset(ic);
+        liveLastText = "";
+        liveAnchorFinalBase = finalText != null ? finalText : "";
+        liveFrozenFinal = finalText != null ? finalText : "";
+        liveFrozenPartial = partialText != null ? partialText : "";
+        livePendingRelocate = false;
+    }
+
+    /**
+     * Text beyond the post-edit freeze. Compatible growth streams live; incompatible
+     * STT revisions advance the freeze without restoring deleted words.
+     */
+    private String computePostEditDelta(String safeFinal, String safePartial) {
+        if (liveFrozenFinal == null) return null;
+        String frozen = liveFrozenFinal + liveFrozenPartial;
+        String current = safeFinal + safePartial;
+        if (current.startsWith(frozen)) {
+            return current.substring(frozen.length());
+        }
+        // Hypothesis revised (e.g. last word changed). Do not dump the whole string back.
+        liveFrozenFinal = safeFinal;
+        liveFrozenPartial = safePartial;
+        return "";
     }
 
     private void finalizeLiveInsert() {
         InputConnection ic = getCurrentInputConnection();
         if (ic != null && !liveLastText.isEmpty()) {
-            int end = liveStartOffset + liveLastText.length();
-            ic.beginBatchEdit();
-            ic.setSelection(liveStartOffset, end);
-            ic.finishComposingText();
-            ic.setSelection(end, end);
-            ic.endBatchEdit();
+            sealLiveSpan(ic);
         }
         liveLastText = "";
         liveAnchorFinalBase = "";
+        liveFrozenFinal = null;
+        liveFrozenPartial = "";
+        liveLastFinalSeen = "";
+        liveLastPartialSeen = "";
+        livePendingRelocate = false;
+        liveExpectedCarets.clear();
     }
 
     private void updateLiveInsert(String finalText, String partialText) {
@@ -1883,20 +2174,38 @@ public class VoiceKeyboardService extends InputMethodService {
 
         String safeFinal = finalText != null ? finalText : "";
         String safePartial = partialText != null ? partialText : "";
+        liveLastFinalSeen = safeFinal;
+        liveLastPartialSeen = safePartial;
 
-        if (hasLiveCursorMoved(ic)) {
-            commitLiveAnchor(ic, safeFinal);
+        if (livePendingRelocate) {
+            applyPendingRelocate(ic, safeFinal, safePartial);
+            return;
         }
 
-        int baseLen = Math.min(liveAnchorFinalBase.length(), safeFinal.length());
-        String displayText = safeFinal.substring(baseLen) + safePartial;
-        if (displayText.isEmpty() && liveLastText.isEmpty()) return;
+        if (hasLiveSegmentBeenEdited(ic)) {
+            reanchorAfterUserEdit(ic, safeFinal, safePartial);
+            return;
+        }
 
+        String displayText;
+        if (liveFrozenFinal != null) {
+            displayText = computePostEditDelta(safeFinal, safePartial);
+            if (displayText == null) displayText = "";
+            if (displayText.isEmpty() && liveLastText.isEmpty()) return;
+        } else {
+            int baseLen = Math.min(liveAnchorFinalBase.length(), safeFinal.length());
+            displayText = safeFinal.substring(baseLen) + safePartial;
+            if (displayText.isEmpty() && liveLastText.isEmpty()) return;
+        }
+
+        liveIgnoreSelectionCallback = true;
         ic.beginBatchEdit();
         ic.setSelection(liveStartOffset, liveStartOffset + liveLastText.length());
         ic.setComposingText(displayText, 1);
         liveLastText = displayText;
         ic.endBatchEdit();
+        mainHandler.post(() -> liveIgnoreSelectionCallback = false);
+        rememberExpectedCaret(liveStartOffset + displayText.length());
     }
 
     private String trimStatus(String message) {
@@ -1917,6 +2226,8 @@ public class VoiceKeyboardService extends InputMethodService {
             return;
         }
 
+        // A selection is left alone here: commitText() replaces it when the
+        // transcript arrives, and a failed transcription then loses nothing.
         try {
             audioFile = File.createTempFile("voice-keyboard-", ".m4a", getCacheDir());
             recorder = new MediaRecorder();
@@ -2074,7 +2385,17 @@ public class VoiceKeyboardService extends InputMethodService {
             return;
         }
         InputConnection inputConnection = getCurrentInputConnection();
-        if (inputConnection != null) inputConnection.commitText(text, 1);
+        if (inputConnection != null) {
+            // Typing during live: commit the composing span first, otherwise
+            // commitText() replaces the entire live text with this key.
+            if (isLiveActive && !liveLastText.isEmpty()) {
+                finishLiveComposingAtCaret(inputConnection);
+            }
+            inputConnection.commitText(text, 1);
+            if (isLiveActive) {
+                reanchorLiveAtCaretNow(inputConnection);
+            }
+        }
         refreshSuggestions();
     }
 
@@ -2093,13 +2414,21 @@ public class VoiceKeyboardService extends InputMethodService {
         InputConnection inputConnection = getCurrentInputConnection();
         if (inputConnection == null) return;
 
+        // Live composing: commit at the visual caret first, then delete — otherwise
+        // getTextBeforeCursor reports the span start and the caret jumps backward.
+        if (isLiveActive && !liveLastText.isEmpty()) {
+            finishLiveComposingAtCaret(inputConnection);
+        }
+
         CharSequence selectedText = inputConnection.getSelectedText(0);
         if (selectedText != null && selectedText.length() > 0) {
             inputConnection.commitText("", 1);
+            reanchorLiveAtCaretNow(inputConnection);
             return;
         }
 
         inputConnection.deleteSurroundingText(1, 0);
+        reanchorLiveAtCaretNow(inputConnection);
     }
 
     private void deleteWordBackward() {
@@ -2123,9 +2452,14 @@ public class VoiceKeyboardService extends InputMethodService {
         InputConnection ic = getCurrentInputConnection();
         if (ic == null) return;
 
+        if (isLiveActive && !liveLastText.isEmpty()) {
+            finishLiveComposingAtCaret(ic);
+        }
+
         CharSequence selected = ic.getSelectedText(0);
         if (selected != null && selected.length() > 0) {
             ic.commitText("", 1);
+            reanchorLiveAtCaretNow(ic);
             return;
         }
 
@@ -2141,6 +2475,7 @@ public class VoiceKeyboardService extends InputMethodService {
         int count = len - i;
         if (count <= 0) count = 1;
         ic.deleteSurroundingText(count, 0);
+        reanchorLiveAtCaretNow(ic);
     }
 
     private void performSingleDelete(View source) {
@@ -2238,17 +2573,46 @@ public class VoiceKeyboardService extends InputMethodService {
         return keyRow;
     }
 
-    private void attachLongPressAlt(Button button, String key) {
-        String base = key.toLowerCase(java.util.Locale.US);
-        String[] alts = EN_LONG_PRESS.get(base);
-        if (alts == null) alts = BN_LONG_PRESS.get(key);
-        if (alts == null) return;
-        final String[] altsFinal = alts;
+    private String[] longPressAltsFor(String key) {
+        if (key == null || key.isEmpty()) return null;
+        String[] alts = AR_LONG_PRESS.get(key);
+        if (alts != null) return alts;
+        alts = BN_LONG_PRESS.get(key);
+        if (alts != null) return alts;
+        return EN_LONG_PRESS.get(key.toLowerCase(java.util.Locale.US));
+    }
+
+    private void attachLongPressAlt(Button button, String[] alts) {
+        if (alts == null || alts.length == 0) return;
         button.setOnLongClickListener(v -> {
             finalizePendingComposing();
-            showSymbolPopup(button, altsFinal);
+            showSymbolPopup(button, alts);
             return true;
         });
+    }
+
+    /** Tiny top arrow hint so users know the key has long-press variants. */
+    private View decorateLongPressHint(Button button, boolean hasAlts) {
+        if (!hasAlts) return button;
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.addView(button, new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+        TextView tip = new TextView(this);
+        tip.setText("\u25B4"); // ▴ small up-pointing triangle
+        tip.setTextSize(7);
+        tip.setTextColor(themeMuted);
+        tip.setGravity(Gravity.CENTER);
+        tip.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        FrameLayout.LayoutParams tipLp = new FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        );
+        tipLp.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        tipLp.topMargin = dp(1);
+        wrap.addView(tip, tipLp);
+        return wrap;
     }
 
     private void populateKeyRow(LinearLayout keyRow, String[] keys, boolean isRow1, boolean qwerty) {
@@ -2306,8 +2670,9 @@ public class VoiceKeyboardService extends InputMethodService {
                     onLetterKeyPressed(key);
                 });
             }
-            attachLongPressAlt(button, key);
-            keyRow.addView(button, weighted(letterKeyHeightDp, 1));
+            String[] alts = longPressAltsFor(key);
+            attachLongPressAlt(button, alts);
+            keyRow.addView(decorateLongPressHint(button, alts != null), weighted(letterKeyHeightDp, 1));
         }
     }
 
